@@ -1,14 +1,14 @@
 {
   "name": "void-shield",
   "version": "1.0.0",
-  "description": "VOID-SHIELD — Heretic Dark Mechanicus VPN (paste URL, Linux + Windows)",
+  "description": "VOID-SHIELD \u2014 Heretic Dark Mechanicus VPN (paste URL, Linux + Windows)",
   "main": "./out/main/index.js",
   "author": {
     "name": "Heretic OS",
     "email": "heretic@heretic-os.dev"
   },
   "license": "MIT",
-  "homepage": "https://github.com/HereticArch/void-shield",
+  "homepage": "https://github.com/petushokmaxorka-ai/Void-Shield",
   "scripts": {
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
@@ -65,7 +65,7 @@
         ]
       },
       {
-        "from": "build/icon.png",
+        "from": "resources/icon.png",
         "to": "icon.png"
       }
     ],
@@ -86,7 +86,7 @@
       ],
       "category": "Network",
       "maintainer": "Heretic OS <heretic@heretic-os.dev>",
-      "icon": "build/icon.png"
+      "icon": "resources/icon.png"
     },
     "win": {
       "target": [
@@ -97,7 +97,7 @@
           ]
         }
       ],
-      "icon": "build/icon.png"
+      "icon": "resources/icon.png"
     },
     "mac": {
       "target": [
@@ -110,7 +110,7 @@
         }
       ],
       "category": "public.app-category.utilities",
-      "icon": "build/icon.png"
+      "icon": "resources/icon.png"
     }
   }
 }

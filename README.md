@@ -11,16 +11,22 @@ No FlClashX required. No systemd. No local VPN install.
 
 ## End users
 
-1. Download a release for your OS ([Releases](../../releases)):
-   - **Linux** → `VoidShield-*.AppImage` → `chmod +x` → run
+### Download (friends)
+
+1. Open **[Releases](https://github.com/petushokmaxorka-ai/Void-Shield/releases)**
+2. Open the latest release (e.g. `v1.0.0`)
+3. Download:
+   - **Linux** → `VoidShield-*.AppImage` → `chmod +x VoidShield-*.AppImage` → double-click / run
    - **Windows** → `VoidShield Setup *.exe` → install → run
-   - **macOS** → `VoidShield-*.dmg`
-2. Paste your provider **subscription URL** (Clash YAML / base64 vless / share-links).
-3. Click **REGISTER & IGNITE**.
-4. Linux may ask once for TUN privileges (`pkexec`). Windows uses bundled `wintun.dll`.
+4. Paste your subscription URL → **REGISTER & IGNITE**
+
+If Releases is empty, the CI build is still running or failed — check
+[Actions](https://github.com/petushokmaxorka-ai/Void-Shield/actions).
 
 Most providers work with the built-in User-Agent negotiation (`clash.meta`, `mihomo`, `v2rayN`, …).  
 If a panel only allows a whitelist app (e.g. “Install HAPP” stubs), use **Import File** with an exported Clash YAML, or set a **Custom User-Agent** if your panel documents one.
+
+Linux may ask once for TUN privileges (`pkexec`). Windows uses bundled `wintun.dll`.
 
 ---
 
