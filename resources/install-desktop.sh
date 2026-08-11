@@ -72,8 +72,16 @@ elif command -v rsvg-convert >/dev/null 2>&1; then
   done
 fi
 mkdir -p "${ICON_THEME}/scalable/apps"
-[[ -f "${SVG_ICON}" ]] && cp "${SVG_ICON}" "${ICON_THEME}/scalable/apps/void-shield.svg" || true
-[[ -f "${PNG_ICON}" ]] && cp -f "${PNG_ICON}" "${ICON_THEME}/scalable/apps/void-shield.png" || true
+# Prefer crimson PNG; do not leave gold SVG as the theme's scalable pick.
+rm -f "${ICON_THEME}/scalable/apps/void-shield.svg"
+if [[ -f "${REPO_ROOT}/resources/icon.png" ]]; then
+  cp -f "${REPO_ROOT}/resources/icon.png" "${ICON_THEME}/scalable/apps/void-shield.png"
+elif [[ -f "${PNG_ICON}" ]]; then
+  cp -f "${PNG_ICON}" "${ICON_THEME}/scalable/apps/void-shield.png"
+fi
+ICON_ABS="${ICON_THEME}/512x512/apps/void-shield.png"
+[[ -f "${ICON_ABS}" ]] || ICON_ABS="${ICON_THEME}/256x256/apps/void-shield.png"
+[[ -f "${ICON_ABS}" ]] || ICON_ABS="void-shield"
 
 # ─── 4. Menu entry — minimal, mirrors a working AppImage .desktop (e.g. ZCode)
 # Plasma/Dolphin is fussy about .desktop contents; keep it lean. The app is
@@ -82,16 +90,19 @@ mkdir -p "${ICON_THEME}/scalable/apps"
 cat > "${DESKTOP_DST}" <<EOF
 [Desktop Entry]
 Name=VOID-SHIELD
-Comment=Standalone VPN Control Panel
+Comment=Heretic Dark Mechanicus VPN — paste URL, ignite
 Exec="${BIN_DIR}/${APP_NAME}" %U
 Terminal=false
 Type=Application
-Icon=void-shield
+Icon=${ICON_ABS}
 Categories=Network;
 StartupWMClass=VoidShield
 MimeType=x-scheme-handler/void-shield;
 EOF
 chmod 755 "${DESKTOP_DST}"
+gtk-update-icon-cache -f "${ICON_THEME}" 2>/dev/null || true
+update-desktop-database "${APPS_DIR}" 2>/dev/null || true
+xdg-desktop-menu forceupdate 2>/dev/null || true
 # Register the void-shield:// deep-link scheme so provider websites can do
 # one-click import (void-shield://import?url=...).
 xdg-mime default "${APP_NAME}.desktop" x-scheme-handler/void-shield 2>/dev/null || true

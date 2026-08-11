@@ -1,5 +1,15 @@
 # ◆ VOID-SHIELD
 
+<p align="center">
+  <a href="#-english">English</a> · <a href="#-русский">Русский</a>
+</p>
+
+---
+
+<a id="-english"></a>
+
+## English
+
 **Heretic Dark Mechanicus VPN client** — paste a subscription URL, ignite the field.
 
 Cross-platform Electron app (Linux + Windows + macOS) with bundled **xray-core** / **sing-box**.
@@ -7,104 +17,103 @@ No FlClashX required. No systemd. No local VPN install.
 
 > Aesthetic: void-black cogitator terminal, **arterial crimson** (Dark Mechanicus / Heretic), not Adeptus Mechanicus gold.
 
----
-
-## End users
-
 ### Download (friends)
 
 1. Open **[Releases](https://github.com/petushokmaxorka-ai/Void-Shield/releases)**
-2. Open the latest release (e.g. `v1.0.0`)
+2. Open the latest release
 3. Download:
-   - **Linux** → `VoidShield-*.AppImage` → `chmod +x VoidShield-*.AppImage` → double-click / run
+   - **Linux** → `VoidShield-*.AppImage` → `chmod +x` → run
    - **Windows** → `VoidShield Setup *.exe` → install → run
 4. Paste your subscription URL → **REGISTER & IGNITE**
 
-If Releases is empty, the CI build is still running or failed — check
-[Actions](https://github.com/petushokmaxorka-ai/Void-Shield/actions).
+If Releases is empty, check [Actions](https://github.com/petushokmaxorka-ai/Void-Shield/actions) — CI may still be building or failed.
 
-Most providers work with the built-in User-Agent negotiation (`clash.meta`, `mihomo`, `v2rayN`, …).  
-If a panel only allows a whitelist app (e.g. “Install HAPP” stubs), use **Import File** with an exported Clash YAML, or set a **Custom User-Agent** if your panel documents one.
+Most providers work with built-in User-Agent negotiation.  
+If a panel only allows a whitelist app (e.g. “Install HAPP” stubs), use **Import File** or set a **Custom User-Agent**.
 
-Linux may ask once for TUN privileges (`pkexec`). Windows uses bundled `wintun.dll`.
+### License
 
----
+**MIT** — you may use, modify, and share freely.  
+Copyright stays with **petushokmaxorka-ai**. When you redistribute or fork, keep the copyright notice and mention this project (see [`LICENSE`](LICENSE)).
 
-## Supported subscription formats
-
-| Format | Notes |
-|--------|--------|
-| Clash / Clash.Meta YAML | `proxies:` list |
-| Base64 share-link list | `vless://` `vmess://` `trojan://` `ss://` … |
-| Plain share-links | One link per line |
-| Local file import | Same formats from disk |
-| Optional FlClashX cache | Linux advanced: import `~/.local/share/FlClashX/profiles` |
-
-Protocols: VLESS (+ REALITY), VMess, Trojan, Shadowsocks, Hysteria2, TUIC, WireGuard (sing-box core).
-
----
-
-## Build from source
+### Build from source
 
 ```bash
 npm install
-npm run fetch-xray          # download cores for packaging (~140MB)
-npm run build:linux         # → release/*.AppImage
-npm run build:win           # → release/*Setup*.exe  (build on Windows or wine CI)
-npm run build:mac           # → release/*.dmg
+npm run fetch-xray
+npm run build:linux   # → release/*.AppImage
+npm run build:win     # → release/*Setup*.exe
 npm test
-```
-
-Dev loop:
-
-```bash
-npm run dev
 ```
 
 ---
 
-## Architecture
+<a id="-русский"></a>
+
+## Русский
+
+**Еретический Dark Mechanicus VPN-клиент** — вставил ссылку подписки, зажёг поле.
+
+Кроссплатформенное Electron-приложение (Linux + Windows + macOS) со встроенными **xray-core** / **sing-box**.
+FlClashX не нужен. systemd не нужен. Отдельный VPN в систему ставить не надо.
+
+> Стиль: чёрный когитатор, **артериальный crimson** (Heretic Dark Mechanicus), не золото Adeptus Mechanicus.
+
+### Скачать (друзьям)
+
+1. Открыть **[Releases](https://github.com/petushokmaxorka-ai/Void-Shield/releases)**
+2. Взять последний релиз
+3. Скачать:
+   - **Linux** → `VoidShield-*.AppImage` → `chmod +x` → запустить
+   - **Windows** → `VoidShield Setup *.exe` → установить → запустить
+4. Вставить URL подписки → **REGISTER & IGNITE**
+
+Если Releases пустой — смотри [Actions](https://github.com/petushokmaxorka-ai/Void-Shield/actions): сборка ещё идёт или упала.
+
+Большинство провайдеров работают с встроенным перебором User-Agent.  
+Если панель отдаёт заглушку «Установите HAPP» — **Import File** или **Custom User-Agent**.
+
+### Лицензия
+
+**MIT** — пользоваться, менять и распространять можно свободно.  
+Права остаются у **petushokmaxorka-ai**. При форке / публикации своей версии нужно **оставить copyright и упомянуть** этот проект (см. [`LICENSE`](LICENSE)).
+
+### Сборка из исходников
+
+```bash
+npm install
+npm run fetch-xray
+npm run build:linux   # → release/*.AppImage
+npm run build:win     # → release/*Setup*.exe
+npm test
+```
+
+---
+
+## Architecture / Архитектура
 
 ```
 Renderer (crimson terminal UI)
     │ IPC
 Main  VpnManager → fetch URL → parse → build config → spawn xray/sing-box
-                              │ gRPC / clash-api
-                              └ observatory / node pin / stats
 ```
-
-| Module | Role |
-|--------|------|
-| `subscription.ts` | Clash YAML + share-links → normalized nodes |
-| `config-builder.ts` | xray JSON (TUN + REALITY + leastPing) |
-| `singbox-config-builder.ts` | sing-box JSON (QUIC protocols) |
-| `vpn-manager.ts` | Orchestration, UA negotiation, FlClashX fallback |
-| `capabilities.ts` | Linux `setcap` once; Windows no-op |
-
----
 
 ## Security notes
 
 - Subprocess via `execFile` / `spawn` only (no `shell: true` with user input)
 - Subscription URL must be `http://` or `https://`
-- Config / settings under Electron `userData`
 - `contextIsolation` + sandbox + CSP on the renderer
 
----
-
-## Releasing (GitHub Actions)
-
-Push a tag `v*` → workflow builds Linux AppImage + Windows NSIS and uploads artifacts to the GitHub Release.
+## Releasing
 
 ```bash
-git tag v1.0.1
-git push origin v1.0.1
+git tag v1.0.2
+git push origin v1.0.2
 ```
+
+Push a tag `v*` → GitHub Actions builds Linux AppImage + Windows NSIS → Release assets.
 
 ---
 
-## License
-
-MIT
-
-*«The Omnissiah abandoned us. The void answers.»*
+*«The Omnissiah abandoned us. The void answers.»*  
+*«Омниссия нас бросил. Отвечает пустота.»*

@@ -4,8 +4,8 @@
   "description": "VOID-SHIELD \u2014 Heretic Dark Mechanicus VPN (paste URL, Linux + Windows)",
   "main": "./out/main/index.js",
   "author": {
-    "name": "Heretic OS",
-    "email": "heretic@heretic-os.dev"
+    "name": "petushokmaxorka-ai",
+    "url": "https://github.com/petushokmaxorka-ai"
   },
   "license": "MIT",
   "homepage": "https://github.com/petushokmaxorka-ai/Void-Shield",
