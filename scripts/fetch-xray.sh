@@ -52,10 +52,16 @@ if [ "${FETCH_ALL}" -eq 0 ]; then
     Linux-aarch64|Linux-arm64) HOST_TARGET="linux-arm64" ;;
     Darwin-x86_64) HOST_TARGET="darwin-x64" ;;
     Darwin-arm64) HOST_TARGET="darwin-arm64" ;;
-    MINGW*-AMD64|MSYS*-AMD64) HOST_TARGET="windows-x64" ;;
+    MINGW*-*|MSYS*-*|CYGWIN*-*) HOST_TARGET="windows-x64" ;;
     *) echo "Unknown host platform ${OS}-${ARCH}, use --all" >&2; exit 1 ;;
   esac
-  TARGETS=("[${HOST_TARGET}]${TARGETS[$HOST_TARGET]}")
+  HOST_ASSET="${TARGETS[$HOST_TARGET]:-}"
+  if [ -z "${HOST_ASSET}" ]; then
+    echo "No xray asset mapped for ${HOST_TARGET}" >&2
+    exit 1
+  fi
+  unset TARGETS
+  declare -A TARGETS=( ["${HOST_TARGET}"]="${HOST_ASSET}" )
 fi
 
 fetch_one() {
@@ -95,8 +101,7 @@ fetch_one() {
 echo "Downloading xray-core binaries..." >&2
 FAILED=0
 for target in "${!TARGETS[@]}"; do
-  # On Linux we fetched linux-x64 already; handle the naming quirk.
-  asset="${TARGETS[$target]#]*}"
+  asset="${TARGETS[$target]}"
   fetch_one "$target" "$asset" || FAILED=1
 done
 

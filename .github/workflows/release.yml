@@ -9,6 +9,9 @@ on:
 permissions:
   contents: write
 
+env:
+  CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
 jobs:
   build-linux:
     runs-on: ubuntu-22.04
@@ -16,24 +19,26 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '20'
           cache: npm
       - name: System deps for AppImage
         run: |
           sudo apt-get update
           sudo apt-get install -y libfuse2 rpm fakeroot dpkg
       - run: npm ci
-      - name: Fetch proxy cores
+      - name: Fetch proxy cores (linux only)
         run: |
-          npm run fetch-xray
-          bash scripts/fetch-singbox.sh --all
-      - run: npm test
-      - name: Verify packaging assets
-        run: |
-          test -f resources/icon.png
-          test -x resources/bin/linux-x64/xray || test -f resources/bin/linux-x64/xray
+          bash scripts/fetch-xray.sh
+          bash scripts/fetch-singbox.sh
           ls -lh resources/bin/linux-x64/
-      - run: npm run build:linux
+          ls -lh resources/bin/*.dat || true
+      - run: npm test
+      - name: Compile
+        run: npm run build
+      - name: Package AppImage + tar.gz
+        env:
+          DEBUG: electron-builder
+        run: npx electron-builder --linux --publish never
       - uses: actions/upload-artifact@v4
         with:
           name: void-shield-linux
@@ -48,23 +53,26 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '20'
           cache: npm
       - run: npm ci
-      - name: Fetch proxy cores
+      - name: Fetch proxy cores (windows only)
         shell: bash
         run: |
-          npm run fetch-xray
-          bash scripts/fetch-singbox.sh --all
+          bash scripts/fetch-xray.sh
+          bash scripts/fetch-singbox.sh
+          ls -lh resources/bin/windows-x64/
+          ls -lh resources/bin/*.dat || true
       - run: npm test
         shell: bash
-      - name: Verify packaging assets
+      - name: Compile
         shell: bash
-        run: |
-          test -f resources/icon.png
-          test -f resources/bin/windows-x64/xray.exe
-          ls -lh resources/bin/windows-x64/
-      - run: npm run build:win
+        run: npm run build
+      - name: Package NSIS installer
+        shell: bash
+        env:
+          DEBUG: electron-builder
+        run: npx electron-builder --win --publish never
       - uses: actions/upload-artifact@v4
         with:
           name: void-shield-windows

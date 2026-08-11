@@ -60,10 +60,15 @@ if [ "${FETCH_ALL}" -eq 0 ]; then
     Linux-aarch64|Linux-arm64) HOST_TARGET="linux-arm64" ;;
     Darwin-x86_64) HOST_TARGET="darwin-x64" ;;
     Darwin-arm64) HOST_TARGET="darwin-arm64" ;;
-    MINGW*-AMD64|MSYS*-AMD64) HOST_TARGET="windows-x64" ;;
+    MINGW*-*|MSYS*-*|CYGWIN*-*) HOST_TARGET="windows-x64" ;;
     *) echo "Unknown host platform ${OS}-${ARCH}, use --all" >&2; exit 1 ;;
   esac
-  HOST_ASSET="${TARGETS[$HOST_TARGET]}"
+  HOST_ASSET="${TARGETS[$HOST_TARGET]:-}"
+  if [ -z "${HOST_ASSET}" ]; then
+    echo "No sing-box asset mapped for ${HOST_TARGET}" >&2
+    exit 1
+  fi
+  unset TARGETS
   declare -A TARGETS=( ["${HOST_TARGET}"]="${HOST_ASSET}" )
 fi
 
