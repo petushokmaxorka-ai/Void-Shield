@@ -1,0 +1,146 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- VOID-SHIELD icon — Void Shield Generator (WH40k).
+     Pyramidal blood-iron podium, 4 corner pillars with glowing caps,
+     central caged warp core emitting a protective field.
+     Dark Mechanicus palette: gold #c8a86e + blood #8b0000 + warp glow #66ccff.
+     Designed to read clearly from 48px to 256px. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <defs>
+    <linearGradient id="forgeGold" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#e8c87e"/>
+      <stop offset="50%" stop-color="#c8a86e"/>
+      <stop offset="100%" stop-color="#8b7355"/>
+    </linearGradient>
+    <linearGradient id="bloodIron" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#6a0000"/>
+      <stop offset="100%" stop-color="#1a0404"/>
+    </linearGradient>
+    <linearGradient id="podiumFace" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#5a0000"/>
+      <stop offset="100%" stop-color="#2a0606"/>
+    </linearGradient>
+    <radialGradient id="warpCore" cx="40%" cy="40%" r="60%">
+      <stop offset="0%" stop-color="#eef8ff"/>
+      <stop offset="40%" stop-color="#66ccff"/>
+      <stop offset="100%" stop-color="#1a4a6a"/>
+    </radialGradient>
+    <radialGradient id="bg" cx="50%" cy="50%" r="55%">
+      <stop offset="0%" stop-color="#0a0a0a"/>
+      <stop offset="100%" stop-color="#000000"/>
+    </radialGradient>
+    <filter id="softGlow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="2.5"/>
+    </filter>
+    <filter id="strongGlow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="4"/>
+    </filter>
+  </defs>
+
+  <rect width="128" height="128" fill="url(#bg)" rx="16"/>
+
+  <g>
+    <!-- ═══ PYRAMIDAL PODIUM ═════════════════════════════════ -->
+    <!-- The base is a truncated pyramid viewed from a slight 3/4 angle.
+         Front face = trapezoid widening downward. -->
+
+    <!-- Podium front face (blood-iron, the signature red-black) -->
+    <path d="M30,108 L40,82 L88,82 L98,108 Z"
+          fill="url(#podiumFace)" stroke="url(#forgeGold)" stroke-width="2"/>
+
+    <!-- Podium top edge (thin gold capstone line) -->
+    <line x1="40" y1="82" x2="88" y2="82" stroke="url(#forgeGold)" stroke-width="2.5"/>
+
+    <!-- Podium tier detail (inner trapezoid = inset panel) -->
+    <path d="M38,106 L46,88 L82,88 L90,106 Z"
+          fill="none" stroke="url(#forgeGold)" stroke-width="1" opacity="0.5"/>
+
+    <!-- Skull + cog emblem on podium face (centered) -->
+    <g transform="translate(64,96)">
+      <!-- Small cog ring -->
+      <circle r="6.5" fill="none" stroke="url(#forgeGold)" stroke-width="1.2" opacity="0.8"/>
+      <!-- Cog teeth (8) -->
+      <g fill="url(#forgeGold)" opacity="0.8">
+        <rect x="-0.8" y="-9" width="1.6" height="2.5"/>
+        <rect x="-0.8" y="6.5" width="1.6" height="2.5"/>
+        <rect x="-9" y="-0.8" width="2.5" height="1.6"/>
+        <rect x="6.5" y="-0.8" width="2.5" height="1.6"/>
+        <rect x="-0.8" y="-9" width="1.6" height="2.5" transform="rotate(45)"/>
+        <rect x="-0.8" y="6.5" width="1.6" height="2.5" transform="rotate(45)"/>
+        <rect x="-9" y="-0.8" width="2.5" height="1.6" transform="rotate(45)"/>
+        <rect x="6.5" y="-0.8" width="2.5" height="1.6" transform="rotate(45)"/>
+      </g>
+      <!-- Skull -->
+      <ellipse cx="0" cy="-0.5" rx="3.5" ry="3" fill="url(#forgeGold)"/>
+      <circle cx="-1.2" cy="-1" r="0.7" fill="#000"/>
+      <circle cx="1.2" cy="-1" r="0.7" fill="#000"/>
+      <rect x="-1.5" y="1.5" width="3" height="1.5" fill="url(#forgeGold)"/>
+    </g>
+
+    <!-- ═══ 4 CORNER PILLARS ═════════════════════════════════ -->
+    <!-- Front two pillars: prominent, gold-rimmed, rise from podium top. -->
+    <!-- Back two pillars: lighter/behind for depth. -->
+
+    <!-- Back-left + back-right pillars (behind core, thinner, dimmer) -->
+    <g opacity="0.55">
+      <rect x="52" y="52" width="5" height="30" rx="1.5" fill="#3a322a" stroke="url(#forgeGold)" stroke-width="1"/>
+      <rect x="71" y="52" width="5" height="30" rx="1.5" fill="#3a322a" stroke="url(#forgeGold)" stroke-width="1"/>
+    </g>
+
+    <!-- Front-left pillar -->
+    <rect x="36" y="46" width="8" height="36" rx="2" fill="#2a241e" stroke="url(#forgeGold)" stroke-width="2"/>
+    <!-- Front-right pillar -->
+    <rect x="84" y="46" width="8" height="36" rx="2" fill="#2a241e" stroke="url(#forgeGold)" stroke-width="2"/>
+
+    <!-- Pillar segment lines (mechanical detail) -->
+    <g stroke="url(#forgeGold)" stroke-width="1" opacity="0.6">
+      <line x1="35" y1="58" x2="45" y2="58"/>
+      <line x1="35" y1="70" x2="45" y2="70"/>
+      <line x1="83" y1="58" x2="93" y2="58"/>
+      <line x1="83" y1="70" x2="93" y2="70"/>
+    </g>
+
+    <!-- Glowing pillar caps (warp energy collector domes) -->
+    <g filter="url(#softGlow)">
+      <ellipse cx="40" cy="45" rx="6" ry="3.5" fill="#66ccff" opacity="0.85"/>
+      <ellipse cx="88" cy="45" rx="6" ry="3.5" fill="#66ccff" opacity="0.85"/>
+    </g>
+    <g fill="#cdeeff">
+      <ellipse cx="40" cy="45" rx="3.5" ry="2"/>
+      <ellipse cx="88" cy="45" rx="3.5" ry="2"/>
+    </g>
+
+    <!-- ═══ CENTRAL WARP CORE (caged sphere) ═════════════════ -->
+    <!-- Containment cage: 4 vertical bars + top/bottom rings -->
+
+    <!-- Cage frame (square ring at mid-height) -->
+    <rect x="42" y="52" width="44" height="24" fill="none" stroke="url(#forgeGold)" stroke-width="2"/>
+    <!-- Cage vertical bars -->
+    <g stroke="url(#forgeGold)" stroke-width="1.3" opacity="0.75">
+      <line x1="53" y1="52" x2="53" y2="76"/>
+      <line x1="64" y1="52" x2="64" y2="76"/>
+      <line x1="75" y1="52" x2="75" y2="76"/>
+    </g>
+    <!-- Cage top arch (where chains/power feed in) -->
+    <path d="M40,52 L88,52" stroke="url(#forgeGold)" stroke-width="2.5" fill="none"/>
+
+    <!-- Warp core sphere — the void shield itself -->
+    <g transform="translate(64,64)">
+      <!-- Outer halo (the projected shield field) -->
+      <circle r="18" fill="#66ccff" opacity="0.18" filter="url(#strongGlow)"/>
+      <!-- Shield bubble ring (faint) -->
+      <circle r="16" fill="none" stroke="#66ccff" stroke-width="1" opacity="0.4"/>
+      <!-- Core sphere -->
+      <circle r="11" fill="url(#warpCore)" stroke="url(#forgeGold)" stroke-width="1.5"/>
+      <!-- Specular highlight -->
+      <ellipse cx="-3.5" cy="-3.5" rx="3.5" ry="2.5" fill="#ffffff" opacity="0.6"/>
+      <!-- Energy crackle lines across sphere -->
+      <path d="M-9,-2 L-3,1 L2,-3 L8,0" fill="none" stroke="#eef8ff" stroke-width="0.8" opacity="0.7"/>
+    </g>
+
+    <!-- ═══ ENERGY FIELD ARCS (rising from core) ══════════════ -->
+    <g fill="none" stroke="#66ccff" stroke-width="1.8" opacity="0.45" filter="url(#softGlow)">
+      <path d="M64,50 Q56,42 50,48"/>
+      <path d="M64,50 Q72,42 78,48"/>
+    </g>
+  </g>
+</svg>

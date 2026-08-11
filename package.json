@@ -1,0 +1,112 @@
+{
+  "name": "void-shield",
+  "version": "1.0.0",
+  "description": "VOID-SHIELD \u2014 Heretic Dark Mechanicus VPN (paste URL, Linux + Windows)",
+  "main": "./out/main/index.js",
+  "author": {
+    "name": "Heretic OS",
+    "email": "heretic@heretic-os.dev"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/HereticArch/void-shield",
+  "scripts": {
+    "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
+    "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
+    "typecheck": "npm run typecheck:node && npm run typecheck:web",
+    "test": "tsc -p tsconfig.test.json && node --test scripts/test-parsers.mjs",
+    "start": "electron-vite preview",
+    "dev": "electron-vite dev",
+    "build": "npm run typecheck && electron-vite build",
+    "postinstall": "electron-builder install-app-deps",
+    "fetch-xray": "bash scripts/fetch-xray.sh --all",
+    "build:unpack": "npm run build && electron-builder --dir",
+    "build:linux": "npm run build && electron-builder --linux",
+    "build:win": "npm run build && electron-builder --win",
+    "build:mac": "npm run build && electron-builder --mac",
+    "build:all": "npm run build && electron-builder -mlw"
+  },
+  "dependencies": {
+    "@electron-toolkit/preload": "^3.0.1",
+    "@electron-toolkit/utils": "^3.0.0",
+    "@grpc/grpc-js": "^1.12.0",
+    "@grpc/proto-loader": "^0.7.13",
+    "js-yaml": "^4.3.1"
+  },
+  "devDependencies": {
+    "@electron-toolkit/tsconfig": "^1.0.1",
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^20.14.8",
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.1",
+    "electron-vite": "^2.3.0",
+    "typescript": "^5.5.2",
+    "vite": "^5.3.1"
+  },
+  "build": {
+    "productName": "VoidShield",
+    "appId": "dev.heretic-os.void-shield",
+    "asar": false,
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "out"
+    ],
+    "extraResources": [
+      {
+        "from": "proto",
+        "to": "proto"
+      },
+      {
+        "from": "resources/bin",
+        "to": "bin",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "tar.gz",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "category": "Network",
+      "maintainer": "Heretic OS <heretic@heretic-os.dev>",
+      "icon": "build/icon.png"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.png"
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "category": "public.app-category.utilities",
+      "icon": "build/icon.png"
+    }
+  }
+}

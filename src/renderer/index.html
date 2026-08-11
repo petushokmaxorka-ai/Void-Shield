@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self';" />
+  <title>◆ VOID-SHIELD — Standalone</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+<!-- BOOT SEQUENCE (Phase 4.4) — disappears once dashboard is ready -->
+<div id="boot-overlay">
+  <pre id="boot-logo">██╗   ██╗ ██████╗ ██╗██████╗
+██║   ██║██╔═══██╗██║██╔══██╗
+██║   ██║██║   ██║██║██║  ██║
+╚██╗ ██╔╝██║   ██║██║██║  ██║
+ ╚████╔╝ ╚██████╔╝██║██████╔╝
+  ╚═══╝   ╚═════╝ ╚═╝╚═════╝
+     S H I E L D  ·  HERETIC
+   DARK MECHANICUS TERMINAL</pre>
+  <div id="boot-log"></div>
+  <div id="boot-cursor">█</div>
+</div>
+<div class="app">
+  <header class="header">
+    <div class="header-left">
+      <h1 class="dm-title">◆ VOID-SHIELD</h1>
+      <div class="dm-subtitle" id="subtitle">HERETIC COGITATOR — CRIMSON UPLINK</div>
+    </div>
+    <div class="header-actions">
+      <span class="badge">◆ DARK MECHANICUS</span>
+      <button id="refresh-btn" class="dm-btn">◆ REFRESH</button>
+    </div>
+  </header>
+
+  <div class="main">
+    <!-- STATUS BANNER -->
+    <div class="panel panel-wide">
+      <div class="panel-title"><span>◆</span> FIELD STATUS</div>
+      <div class="status-banner offline" id="status-banner">
+        <div class="left">
+          <div class="big-status offline" id="big-status">○ OFFLINE</div>
+          <div id="status-detail" class="metric-label">INITIALIZING VOID-SHIELD...</div>
+        </div>
+        <div class="right">
+          <button id="btn-start" class="dm-btn dm-btn-green">◆ IGNITE</button>
+          <button id="btn-stop" class="dm-btn dm-btn-red">✗ EXTINGUISH</button>
+          <button id="btn-restart" class="dm-btn">↻ RESTART</button>
+          <button id="btn-auto" class="dm-btn">⚙ AUTO</button>
+        </div>
+      </div>
+      <div class="grid-3">
+        <div class="metric-card"><div class="metric-card-title">EGRESS IP</div><div class="metric-card-value" id="egress-ip">—</div></div>
+        <div class="metric-card"><div class="metric-card-title">ACTIVE NODE</div><div class="metric-card-value" id="active-node">—</div></div>
+        <div class="metric-card"><div class="metric-card-title">UPTIME</div><div class="metric-card-value" id="uptime">—</div></div>
+        <div class="metric-card"><div class="metric-card-title">MODE</div><div class="metric-card-value" id="mode">—</div></div>
+      </div>
+      <div id="status-line" class="status-line"></div>
+    </div>
+
+    <!-- NODE ROSTER -->
+    <div class="panel panel-wide">
+      <div class="panel-title">
+        <span>◆</span> NODE ROSTER
+        <span id="nodes-summary" style="color:var(--dm-muted)">— / —</span>
+      </div>
+      <div class="log-controls">
+        <input type="text" id="node-filter" class="log-filter" placeholder="FILTER BY NAME / COUNTRY..." />
+        <button id="filter-clear" class="dm-btn dm-btn-small">CLEAR</button>
+      </div>
+      <div class="list" id="nodes-list">
+        <div class="empty">LOADING OBSERVATORY...</div>
+      </div>
+    </div>
+
+    <!-- ROUTING + CORE (Phase 3) -->
+    <div class="panel">
+      <div class="panel-title"><span>⚒</span> DOCTRINE & ENGINE</div>
+      <div class="metric-row">
+        <span class="metric-label">SCENARIO</span>
+        <select id="scenario-select" class="log-filter" style="max-width:220px">
+          <option value="proxy">◆ FULL GELLAR FIELD</option>
+          <option value="bypass-lan">☉ BYPASS LAN</option>
+          <option value="bypass-ru">⚒ BYPASS RU</option>
+          <option value="bypass-cn">⚒ BYPASS CN</option>
+          <option value="bypass-gfw">☉ GFW MODE</option>
+        </select>
+      </div>
+      <div class="metric-row">
+        <span class="metric-label">CORE</span>
+        <select id="core-select" class="log-filter" style="max-width:160px">
+          <option value="singbox">sing-box (Hysteria2/TUIC/WG)</option>
+          <option value="xray">xray (REALITY/XHTTP)</option>
+        </select>
+      </div>
+      <button id="btn-test-delays" class="dm-btn dm-btn-small">⚡ PING ALL NODES</button>
+      <span id="ping-status" class="metric-label" style="margin-left:6px"></span>
+    </div>
+
+    <!-- SUBSCRIPTION -->
+    <div class="panel">
+      <div class="panel-title"><span>◆</span> ASTROPATH CONTRACT</div>
+      <div id="sub-content"><div class="empty">LOADING...</div></div>
+      <div id="quota-bar-wrap" style="display:none">
+        <div class="metric-row">
+          <span class="metric-label">TRAFFIC QUOTA</span>
+          <span id="quota-text" class="metric-value" style="font-size:10px">—</span>
+        </div>
+        <div class="progress-bar"><div id="quota-fill" class="progress-fill" style="width:0%"></div></div>
+        <div class="metric-row">
+          <span class="metric-label">EXPIRES</span>
+          <span id="quota-expire" class="metric-value" style="font-size:10px">—</span>
+        </div>
+      </div>
+      <button id="btn-import-clipboard" class="dm-btn dm-btn-small" style="display:none">⎘ IMPORT FROM CLIPBOARD</button>
+      <button id="btn-dash-import-flclash" class="dm-btn dm-btn-small">⎘ IMPORT FLCLASHX</button>
+    </div>
+
+    <!-- TRAFFIC -->
+    <div class="panel">
+      <div class="panel-title"><span>◆</span> TRAFFIC COUNTERS</div>
+      <div id="traffic-content"><div class="empty">LOADING...</div></div>
+    </div>
+
+    <!-- UPLINK LOG -->
+    <div class="panel panel-wide">
+      <div class="panel-title"><span>◆</span> UPLINK TRANSMISSIONS</div>
+      <div class="log-controls">
+        <input type="text" id="log-filter" class="log-filter" placeholder="FILTER LOG LINES..." />
+        <button id="log-clear-filter" class="dm-btn dm-btn-small">CLEAR</button>
+      </div>
+      <div class="log-box" id="log-box">NO LOGS</div>
+    </div>
+  </div>
+</div>
+<!-- ONBOARDING MODAL (shown on first run / no subscription) -->
+<div class="modal-overlay hidden" id="onboarding-overlay">
+  <div class="modal">
+    <div class="modal-title">◆ HERETIC UPLINK REGISTRATION</div>
+    <div class="modal-desc">PASTE SUBSCRIPTION URL — WORKS ON LINUX &amp; WINDOWS</div>
+    <div class="modal-field">
+      <label for="sub-url">SUBSCRIPTION URL (http/https)</label>
+      <input type="text" id="sub-url" class="modal-input" placeholder="https://your-provider.com/sub/your-token" autocomplete="off" />
+    </div>
+    <div class="modal-field">
+      <label for="custom-ua">CUSTOM USER-AGENT (optional)</label>
+      <input type="text" id="custom-ua" class="modal-input" placeholder="e.g. clash.meta — tried first when fetching" autocomplete="off" />
+    </div>
+    <div class="modal-actions">
+      <button id="btn-register" class="dm-btn dm-btn-green">◆ REGISTER &amp; IGNITE</button>
+      <button id="btn-import-flclash" class="dm-btn">⎘ IMPORT FLCLASHX</button>
+      <button id="btn-import-file" class="dm-btn">⎘ IMPORT FILE</button>
+    </div>
+    <div class="modal-desc" style="font-size:8px;margin-top:4px">FLCLASHX: ~/.local/share/FlClashX/profiles — same cache the dashboard uses. FILE: Clash YAML / vless:// .txt</div>
+    <div class="modal-status" id="onboarding-status">AWAITING ASTROPATH CONTRACT...</div>
+  </div>
+</div>
+
+<script type="module" src="./index.ts"></script>
+</body>
+</html>

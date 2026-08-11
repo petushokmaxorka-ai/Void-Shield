@@ -1,0 +1,14 @@
+{
+  "extends": "@electron-toolkit/tsconfig/tsconfig.web.json",
+  "compilerOptions": {
+    "composite": true,
+    "skipLibCheck": true,
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": false,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "outDir": "./out"
+  },
+  "include": ["src/renderer/**/*", "src/preload/**/*", "src/shared/**/*"]
+}

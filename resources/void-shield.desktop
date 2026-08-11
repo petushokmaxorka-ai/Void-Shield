@@ -1,0 +1,14 @@
+[Desktop Entry]
+Version=1.0
+Name=VOID-SHIELD
+Name[ru]=VOID-SHIELD
+Comment=Gellar Field Control — Standalone VPN Panel
+Comment[ru]=Контроль Варп-Щита — Автономная VPN-панель
+Exec=/home/heretic/heretic-os/organa/void-shield-desktop/resources/launch-void-shield.sh
+Icon=/home/heretic/heretic-os/organa/void-shield-desktop/resources/void-shield-icon.svg
+Type=Application
+Terminal=false
+Categories=Network;
+Keywords=vpn;xray;reality;gellar;void;shield;mechanicus;wh40k;
+StartupNotify=true
+StartupWMClass=VoidShield
