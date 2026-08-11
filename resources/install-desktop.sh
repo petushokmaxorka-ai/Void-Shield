@@ -14,6 +14,7 @@ BIN_DIR="${HOME}/.local/bin"
 APPS_DIR="${HOME}/.local/share/applications"
 ICON_THEME="${HOME}/.local/share/icons/hicolor"
 SVG_ICON="${REPO_ROOT}/resources/void-shield-icon.svg"
+PNG_ICON="${REPO_ROOT}/resources/void-shield-icon.png"
 DESKTOP_DST="${APPS_DIR}/void-shield.desktop"
 
 mkdir -p "${BIN_DIR}" "${APPS_DIR}"
@@ -30,9 +31,11 @@ needs_build() {
 if needs_build; then
   echo "VOID-SHIELD: building AppImage..." >&2
   cd "${REPO_ROOT}"
-  # PNG icon required by electron-builder for AppImage
+  # Prefer curated PNG art; fall back to SVG rasterize.
   mkdir -p build
-  if command -v rsvg-convert >/dev/null 2>&1; then
+  if [[ -f "${PNG_ICON}" ]]; then
+    cp -f "${PNG_ICON}" build/icon.png
+  elif command -v rsvg-convert >/dev/null 2>&1; then
     rsvg-convert -w 512 -h 512 "${SVG_ICON}" -o build/icon.png
   fi
   npm run build
@@ -49,7 +52,19 @@ cp "${APPIMAGE_SRC}" "${BIN_DIR}/${APP_NAME}"
 chmod +x "${BIN_DIR}/${APP_NAME}"
 
 # ─── 3. Icons (hicolor theme) ──────────────────────────────────────────
-if command -v rsvg-convert >/dev/null 2>&1; then
+ICON_SRC="${PNG_ICON}"
+[[ -f "${ICON_SRC}" ]] || ICON_SRC="${REPO_ROOT}/build/icon.png"
+if [[ -f "${ICON_SRC}" ]] && command -v convert >/dev/null 2>&1; then
+  for size in 48 128 256 512; do
+    mkdir -p "${ICON_THEME}/${size}x${size}/apps"
+    convert "${ICON_SRC}" -resize "${size}x${size}" \
+      "${ICON_THEME}/${size}x${size}/apps/void-shield.png" 2>/dev/null || true
+  done
+elif [[ -f "${ICON_SRC}" ]]; then
+  mkdir -p "${ICON_THEME}/256x256/apps" "${ICON_THEME}/512x512/apps"
+  cp -f "${ICON_SRC}" "${ICON_THEME}/256x256/apps/void-shield.png"
+  cp -f "${ICON_SRC}" "${ICON_THEME}/512x512/apps/void-shield.png"
+elif command -v rsvg-convert >/dev/null 2>&1; then
   for size in 48 128 256; do
     mkdir -p "${ICON_THEME}/${size}x${size}/apps"
     rsvg-convert -w "${size}" -h "${size}" "${SVG_ICON}" \
@@ -57,7 +72,8 @@ if command -v rsvg-convert >/dev/null 2>&1; then
   done
 fi
 mkdir -p "${ICON_THEME}/scalable/apps"
-cp "${SVG_ICON}" "${ICON_THEME}/scalable/apps/void-shield.svg"
+[[ -f "${SVG_ICON}" ]] && cp "${SVG_ICON}" "${ICON_THEME}/scalable/apps/void-shield.svg" || true
+[[ -f "${PNG_ICON}" ]] && cp -f "${PNG_ICON}" "${ICON_THEME}/scalable/apps/void-shield.png" || true
 
 # ─── 4. Menu entry — minimal, mirrors a working AppImage .desktop (e.g. ZCode)
 # Plasma/Dolphin is fussy about .desktop contents; keep it lean. The app is

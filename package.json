@@ -1,7 +1,7 @@
 {
   "name": "void-shield",
   "version": "1.0.0",
-  "description": "VOID-SHIELD \u2014 Heretic Dark Mechanicus VPN (paste URL, Linux + Windows)",
+  "description": "VOID-SHIELD — Heretic Dark Mechanicus VPN (paste URL, Linux + Windows)",
   "main": "./out/main/index.js",
   "author": {
     "name": "Heretic OS",
@@ -63,6 +63,10 @@
         "filter": [
           "**/*"
         ]
+      },
+      {
+        "from": "build/icon.png",
+        "to": "icon.png"
       }
     ],
     "linux": {
