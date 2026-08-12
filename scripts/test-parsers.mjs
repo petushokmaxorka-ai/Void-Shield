@@ -10,8 +10,8 @@ import assert from 'node:assert/strict'
 import {
   parseSubscription,
   parseUserInfoHeader,
-} from '../out/test-src/subscription.js'
-import { buildSingboxConfig } from '../out/test-src/singbox-config-builder.js'
+} from '../out/test-src/main/subscription.js'
+import { buildSingboxConfig } from '../out/test-src/main/singbox-config-builder.js'
 import { execFileSync } from 'child_process'
 import { existsSync, writeFileSync } from 'fs'
 

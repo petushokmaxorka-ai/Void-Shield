@@ -12,7 +12,7 @@ import { join } from 'path'
 import * as grpc from '@grpc/grpc-js'
 import * as protoLoader from '@grpc/proto-loader'
 import { XRAY_GRPC_ADDR } from './xray-constants'
-import { isDomesticRuNode } from '../shared/node-region'
+import { isDomesticRuNode } from '../shared/node-region.js'
 
 // ─── Constants ─────────────────────────────────────────────
 const XRAY_API = XRAY_GRPC_ADDR

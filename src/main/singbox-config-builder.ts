@@ -12,7 +12,7 @@
 
 import type { ParsedNode, TransportOpts, TlsOpts } from './subscription'
 import { scenarioRules, scenarioRuleSetDefs, scenarioFinal, type Scenario } from './routing-scenarios.js'
-import { autoBalancerTags } from '../shared/node-region'
+import { autoBalancerTags } from '../shared/node-region.js'
 
 // clash-api port — NOT 9090 (often occupied by mihomo/clash on dev machines).
 // 9097 is our dedicated port; the runner + vpn-manager reference this constant.

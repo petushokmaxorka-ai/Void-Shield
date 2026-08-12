@@ -27,7 +27,7 @@ import * as grpc from './grpc-client'
 import * as runner from './xray-runner'
 import { checkCaps, grantCapsLinux, platformNeedsCaps } from './capabilities'
 import { loadSettings, updateSettings, getSubscriptionUrl, setSubscriptionUrl, Settings, SubscriptionQuota, CoreEngine } from './storage'
-import { sortNodesForRoster } from '../shared/node-region'
+import { sortNodesForRoster } from '../shared/node-region.js'
 
 // sing-box runner instance (lazy — only used when active core is singbox).
 let _singbox: SingboxRunner | null = null

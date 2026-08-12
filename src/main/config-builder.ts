@@ -10,7 +10,7 @@
 
 import type { ParsedNode, Transport, TransportOpts, TlsOpts } from './subscription'
 import { XRAY_GRPC_ADDR, XRAY_SOCKS_HOST, XRAY_SOCKS_PORT } from './xray-constants'
-import { autoBalancerTags } from '../shared/node-region'
+import { autoBalancerTags } from '../shared/node-region.js'
 
 const BALANCER_TAG = 'best'
 

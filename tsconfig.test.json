@@ -4,7 +4,7 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "outDir": "./out/test-src",
-    "rootDir": "./src/main",
+    "rootDir": "./src",
     "strict": false,
     "skipLibCheck": true,
     "esModuleInterop": true,
@@ -12,5 +12,11 @@
     "declaration": false,
     "sourceMap": false
   },
-  "include": ["src/main/subscription.ts", "src/main/config-builder.ts", "src/main/singbox-config-builder.ts", "src/main/routing-scenarios.ts"]
+  "include": [
+    "src/main/subscription.ts",
+    "src/main/config-builder.ts",
+    "src/main/singbox-config-builder.ts",
+    "src/main/routing-scenarios.ts",
+    "src/shared/node-region.ts"
+  ]
 }
