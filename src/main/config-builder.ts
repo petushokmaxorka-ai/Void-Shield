@@ -10,6 +10,7 @@
 
 import type { ParsedNode, Transport, TransportOpts, TlsOpts } from './subscription'
 import { XRAY_GRPC_ADDR, XRAY_SOCKS_HOST, XRAY_SOCKS_PORT } from './xray-constants'
+import { autoBalancerTags } from '../shared/node-region'
 
 const BALANCER_TAG = 'best'
 
@@ -193,6 +194,8 @@ export function buildConfig(nodes: ParsedNode[], opts: BuildOptions = {}): Recor
   const keep = opts.filter ? nodes.filter(opts.filter) : nodes
   const outbounds = keep.map(outboundFromNode)
   const tags = outbounds.map((o) => o.tag as string)
+  const balancerSelector = autoBalancerTags(tags)
+  const balancerFallback = balancerSelector[0] ?? tags[0] ?? 'direct'
 
   return {
     log: { loglevel: 'warning' },
@@ -248,9 +251,9 @@ export function buildConfig(nodes: ParsedNode[], opts: BuildOptions = {}): Recor
       domainStrategy: 'Use_IP4',
       balancers: [{
         tag: BALANCER_TAG,
-        selector: tags,
+        selector: balancerSelector,
         strategy: { type: 'leastPing' },
-        fallbackTag: tags[0] ?? 'direct',
+        fallbackTag: balancerFallback,
       }],
       rules: [
         // Private/LAN networks — direct, not via VPN (explicit CIDRs, no geoip.dat).

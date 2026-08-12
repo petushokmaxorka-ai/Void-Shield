@@ -8,7 +8,10 @@
     "strict": false,
     "noUnusedLocals": false,
     "noUnusedParameters": false,
-    "outDir": "./out"
+    "outDir": "./out",
+    "paths": {
+      "@shared/*": ["./src/shared/*"]
+    }
   },
   "include": ["src/renderer/**/*", "src/preload/**/*", "src/shared/**/*"]
 }

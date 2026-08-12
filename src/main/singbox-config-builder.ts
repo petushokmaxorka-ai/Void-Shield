@@ -12,6 +12,7 @@
 
 import type { ParsedNode, TransportOpts, TlsOpts } from './subscription'
 import { scenarioRules, scenarioRuleSetDefs, scenarioFinal, type Scenario } from './routing-scenarios.js'
+import { autoBalancerTags } from '../shared/node-region'
 
 // clash-api port — NOT 9090 (often occupied by mihomo/clash on dev machines).
 // 9097 is our dedicated port; the runner + vpn-manager reference this constant.
@@ -243,6 +244,7 @@ export function buildSingboxConfig(nodes: ParsedNode[], opts: SingboxBuildOption
   const outbounds = otherNodes.map(outboundFromNode)
   const endpoints = wgNodes.map(wireguardEndpointFromNode)
   const tags = [...outbounds, ...endpoints].map((o) => o.tag as string)
+  const autoTags = autoBalancerTags(tags)
 
   return {
     log: {
@@ -312,7 +314,7 @@ export function buildSingboxConfig(nodes: ParsedNode[], opts: SingboxBuildOption
       {
         type: 'urltest',
         tag: URLTEST_TAG,
-        outbounds: tags,
+        outbounds: autoTags,
         url: opts.testUrl ?? 'https://www.gstatic.com/generate_204',
         interval: opts.testInterval ?? '3m',
         tolerance: 50,        // ms — не прыгать между близкими узлами

@@ -4,6 +4,8 @@
 // Flow: first run → onboarding modal (subscription URL) → dashboard.
 // Dashboard: status, nodes, traffic, logs (Dark Mechanicus theme).
 
+import { isDomesticRuNode, hasAliveNonDomesticRu } from '@shared/node-region'
+
 const $ = (id: string): HTMLElement => document.getElementById(id) as HTMLElement
 const api = window.electronAPI.vpn
 
@@ -221,7 +223,8 @@ async function loadStatus(): Promise<void> {
     const detail = $('status-detail')
     detail.textContent = active ? formatStatusDetail(d) : 'press IGNITE to raise the shield'
     ;($('egress-ip') as HTMLElement).textContent = d.egressIp || '—'
-    ;($('active-node') as HTMLElement).textContent = d.activeNode || (d.override || '—')
+    // Pinned override wins — activeNode from balancer principle_target can lag observatory leastPing.
+    ;($('active-node') as HTMLElement).textContent = d.override || d.activeNode || '—'
     ;($('uptime') as HTMLElement).textContent = formatUptime(d.uptime)
     const modeEl = $('mode') as HTMLElement
     modeEl.textContent = d.autoMode ? 'AUTO (LEASTPING)' : 'MANUAL'
@@ -247,12 +250,19 @@ function renderNodes(): void {
     return
   }
   const active = currentStatus ? (currentStatus.override || currentStatus.activeNode) : ''
+  const sinkDomestic = hasAliveNonDomesticRu(allNodes)
+  let domesticHeader = false
   list.innerHTML = nodes.map((n) => {
+    let section = ''
+    if (sinkDomestic && isDomesticRuNode(n.tag) && !domesticHeader) {
+      domesticHeader = true
+      section = '<div class="list-section">🇷🇺 DOMESTIC RU — FALLBACK ONLY (NO BYPASS)</div>'
+    }
     const isActive = n.tag === active
     const cls = n.alive === true ? 'live' : (n.alive === false ? 'dead' : '')
     const delayCls = n.alive === false ? 'dead' : delayColor(n.delayMs)
     const delayTxt = n.delayMs != null ? `${n.delayMs}MS` : (n.alive === false ? 'DEAD' : '—')
-    return `<div class="list-item ${isActive ? 'active-node' : ''}" data-tag="${escapeHtml(n.tag)}">
+    return `${section}<div class="list-item ${isActive ? 'active-node' : ''}" data-tag="${escapeHtml(n.tag)}">
       <div class="list-name ${cls}">${escapeHtml(n.tag)}</div>
       <div class="list-meta">${escapeHtml((n.server || '').split('.')[0])}<br>${n.port || ''}</div>
       <div class="list-delay ${delayCls}" title="${escapeHtml(n.lastError || '')}">${delayTxt}</div>

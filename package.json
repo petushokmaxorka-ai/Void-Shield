@@ -1,6 +1,6 @@
 {
   "name": "void-shield",
-  "version": "1.0.0",
+  "version": "1.0.3",
   "description": "VOID-SHIELD \u2014 Heretic Dark Mechanicus VPN (paste URL, Linux + Windows)",
   "main": "./out/main/index.js",
   "author": {

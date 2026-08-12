@@ -183,6 +183,15 @@ body::after {
 .progress-fill.orange { background: var(--dm-orange); box-shadow: none; }
 
 .list { flex: 1; overflow-y: auto; min-height: 120px; max-height: 380px; border: 1px solid var(--dm-crimson-dim); }
+.list-section {
+  padding: 6px 8px;
+  font-size: 8px;
+  letter-spacing: 0.08em;
+  color: var(--dm-muted);
+  background: rgba(122, 24, 40, 0.35);
+  border-bottom: 1px solid var(--dm-crimson-dim);
+  text-transform: uppercase;
+}
 .list-item {
   display: flex; justify-content: space-between; align-items: center;
   padding: 6px 8px;

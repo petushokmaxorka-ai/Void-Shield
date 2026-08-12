@@ -27,6 +27,7 @@ import * as grpc from './grpc-client'
 import * as runner from './xray-runner'
 import { checkCaps, grantCapsLinux, platformNeedsCaps } from './capabilities'
 import { loadSettings, updateSettings, getSubscriptionUrl, setSubscriptionUrl, Settings, SubscriptionQuota, CoreEngine } from './storage'
+import { sortNodesForRoster } from '../shared/node-region'
 
 // sing-box runner instance (lazy — only used when active core is singbox).
 let _singbox: SingboxRunner | null = null
@@ -705,13 +706,8 @@ export class VpnManager {
         result.push({ tag, server: meta.server, port: meta.port, alive: null, delayMs: null, lastError: 'not probed' })
       }
     }
-    // Sort alive first.
-    result.sort((a, b) => {
-      if (a.alive === true) return b.alive === true ? (a.delayMs ?? 99999) - (b.delayMs ?? 99999) : -1
-      if (a.alive === false) return b.alive === true ? 1 : b.alive === false ? 0 : -1
-      return 1
-    })
-    return { nodes: result, total: result.length, alive: aliveCount }
+    const sorted = sortNodesForRoster(result)
+    return { nodes: sorted, total: sorted.length, alive: aliveCount }
   }
 
   // ─── Node selection ───────────────────────────────────────

@@ -12,6 +12,7 @@ import { join } from 'path'
 import * as grpc from '@grpc/grpc-js'
 import * as protoLoader from '@grpc/proto-loader'
 import { XRAY_GRPC_ADDR } from './xray-constants'
+import { isDomesticRuNode } from '../shared/node-region'
 
 // ─── Constants ─────────────────────────────────────────────
 const XRAY_API = XRAY_GRPC_ADDR
@@ -132,8 +133,10 @@ export async function inferActiveNodeFromObservatory(): Promise<string> {
     const obs = await getOutboundStatus()
     const alive = (obs.status ?? []).filter((s) => Boolean(s.alive))
     if (!alive.length) return ''
-    alive.sort((a, b) => Number(a.delay ?? 99999) - Number(b.delay ?? 99999))
-    return outboundTag(alive[0])
+    const foreignAlive = alive.filter((s) => !isDomesticRuNode(outboundTag(s)))
+    const pool = foreignAlive.length > 0 ? foreignAlive : alive
+    pool.sort((a, b) => Number(a.delay ?? 99999) - Number(b.delay ?? 99999))
+    return outboundTag(pool[0])
   } catch {
     return ''
   }
