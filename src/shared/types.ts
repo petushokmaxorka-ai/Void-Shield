@@ -47,6 +47,8 @@ export interface VpnStatus {
   override: string
   autoMode: boolean
   apiOk: boolean
+  socksOk: boolean
+  tunOk: boolean
 }
 
 export interface VpnNode {

@@ -15,6 +15,7 @@ let currentStatus: StatusData | null = null
 interface StatusData {
   running: boolean; uptime: number; egressIp: string;
   activeNode: string; override: string; autoMode: boolean; apiOk: boolean;
+  socksOk: boolean; tunOk: boolean;
 }
 interface NodeRow {
   tag: string; server: string; port: number;
@@ -196,6 +197,15 @@ async function importFromFlClash(): Promise<void> {
 }
 
 // ═══ DASHBOARD (after onboarding) ═══════════════════════════
+function formatStatusDetail(d: StatusData): string {
+  const parts: string[] = []
+  if (d.socksOk) parts.push('socks up')
+  if (d.tunOk) parts.push('tun up')
+  if (d.apiOk) parts.push('api ok')
+  if (!parts.length) parts.push('core starting')
+  return `${parts.join(' | ')} | uplink ${formatUptime(d.uptime)}`
+}
+
 async function loadStatus(): Promise<void> {
   try {
     const d = (await api.getStatus()) as StatusData
@@ -209,9 +219,7 @@ async function loadStatus(): Promise<void> {
     const sub = $('subtitle')
     sub.textContent = active ? 'HERETIC FIELD ACTIVE — CRIMSON UPLINK STABLE' : 'FIELD OFFLINE — NO PROTECTION'
     const detail = $('status-detail')
-    detail.textContent = active
-      ? `${d.apiOk ? 'tun+socks up' : 'api unreachable'} | uplink ${formatUptime(d.uptime)}`
-      : 'press IGNITE to raise the shield'
+    detail.textContent = active ? formatStatusDetail(d) : 'press IGNITE to raise the shield'
     ;($('egress-ip') as HTMLElement).textContent = d.egressIp || '—'
     ;($('active-node') as HTMLElement).textContent = d.activeNode || (d.override || '—')
     ;($('uptime') as HTMLElement).textContent = formatUptime(d.uptime)

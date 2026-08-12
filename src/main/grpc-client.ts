@@ -3,18 +3,18 @@
 // ═══════════════════════════════════════════════════════════
 // Dynamic proto loading via @grpc/proto-loader (no codegen step).
 // 4 stubs: RoutingService, ObservatoryService, StatsService.
-// All calls loopback to 127.0.0.1:8086 (xray api inbound).
+// All calls loopback to void-shield xray API (127.0.0.1:8088).
 //
 // Direct port of voidshield.py gRPC surface (verified field names
 // against proto/app/*/command/command.proto + config.proto).
 
 import { join } from 'path'
-import { app } from 'electron'
 import * as grpc from '@grpc/grpc-js'
 import * as protoLoader from '@grpc/proto-loader'
+import { XRAY_GRPC_ADDR } from './xray-constants'
 
-// ─── Constants (mirror voidshield.py:53-60) ────────────────
-const XRAY_API = '127.0.0.1:8086'
+// ─── Constants ─────────────────────────────────────────────
+const XRAY_API = XRAY_GRPC_ADDR
 const BALANCER_TAG = 'best'
 
 // ─── Proto root resolution ──────────────────────────────────
@@ -88,6 +88,20 @@ export interface BalancerInfo {
   ok: boolean
 }
 
+function pickField(obj: unknown, ...keys: string[]): unknown {
+  if (!obj || typeof obj !== 'object') return undefined
+  const rec = obj as Record<string, unknown>
+  for (const k of keys) {
+    if (rec[k] != null && rec[k] !== '') return rec[k]
+  }
+  return undefined
+}
+
+function outboundTag(row: OutboundStatus | Record<string, unknown>): string {
+  const r = row as Record<string, unknown>
+  return String(r.outbound_tag ?? r.outboundTag ?? '')
+}
+
 export async function getBalancerInfo(): Promise<BalancerInfo> {
   const RoutingService = new grpcProto.xray.app.router.command.RoutingService(
     XRAY_API,
@@ -100,12 +114,28 @@ export async function getBalancerInfo(): Promise<BalancerInfo> {
       { tag: BALANCER_TAG },
       5000
     )
-    const bal = resp?.balancer ?? {}
-    const override = bal?.override?.target ?? ''
-    const activeNode = bal?.principle_target?.tag?.[0] ?? ''
+    const bal = (resp?.balancer ?? {}) as Record<string, unknown>
+    const override = String(pickField(pickField(bal, 'override'), 'target') ?? '')
+    const pt = pickField(bal, 'principle_target', 'principleTarget') as Record<string, unknown> | undefined
+    const tags = pickField(pt ?? {}, 'tag')
+    const activeNode =
+      Array.isArray(tags) && tags.length ? String(tags[0]) : ''
     return { activeNode, override, ok: true }
   } catch {
     return { activeNode: '', override: '', ok: false }
+  }
+}
+
+/** When balancer API returns empty principle_target, infer from observatory least delay. */
+export async function inferActiveNodeFromObservatory(): Promise<string> {
+  try {
+    const obs = await getOutboundStatus()
+    const alive = (obs.status ?? []).filter((s) => Boolean(s.alive))
+    if (!alive.length) return ''
+    alive.sort((a, b) => Number(a.delay ?? 99999) - Number(b.delay ?? 99999))
+    return outboundTag(alive[0])
+  } catch {
+    return ''
   }
 }
 
@@ -149,7 +179,18 @@ export async function getOutboundStatus(): Promise<ObservationResult> {
     {},
     6000
   )
-  return (resp?.status ?? { status: [] }) as ObservationResult
+  const outer = resp?.status ?? {}
+  const raw = pickField(outer, 'status') ?? outer
+  const list = Array.isArray(raw) ? raw : []
+  const status: OutboundStatus[] = list.map((row: Record<string, unknown>) => ({
+    alive: Boolean(row.alive),
+    delay: (row.delay ?? row.Delay ?? 0) as string | number,
+    last_error_reason: String(row.last_error_reason ?? row.lastErrorReason ?? ''),
+    outbound_tag: outboundTag(row),
+    last_seen_time: (row.last_seen_time ?? row.lastSeenTime ?? 0) as string | number,
+    last_try_time: (row.last_try_time ?? row.lastTryTime ?? 0) as string | number,
+  }))
+  return { status }
 }
 
 // ─── StatsService (counters + sys stats) ───────────────────

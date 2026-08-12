@@ -9,12 +9,9 @@
 //   + gRPC API 8086 (для UI) + outbounds + leastPing balancer.
 
 import type { ParsedNode, Transport, TransportOpts, TlsOpts } from './subscription'
+import { XRAY_GRPC_ADDR, XRAY_SOCKS_HOST, XRAY_SOCKS_PORT } from './xray-constants'
 
 const BALANCER_TAG = 'best'
-// Ports offset from defaults to avoid conflict with heretic-vpn (xray:7890/7891)
-// and mihomo (clash-api:9090) running on dev machines.
-const XRAY_API = '127.0.0.1:8088'
-const SOCKS_PORT = 7893
 
 // ─── streamSettings builder ─────────────────────────────────
 // Translates the normalized TransportOpts + TlsOpts into xray's
@@ -169,15 +166,17 @@ function outboundFromNode(n: ParsedNode): Record<string, unknown> {
 
 // ─── TUN inbound (system-wide traffic interception) ─────────
 function tunInbound(): Record<string, unknown> {
-  // xray TUN берёт ip/интерфейс из системного стека (autoRoute выставляет
-  // маршруты). На Linux требует CAP_NET_ADMIN, на Windows — wintun.dll.
+  // xray TUN on Linux needs explicit inet4 + interface name (autoRoute alone is not enough).
   return {
     tag: 'tun-in',
     protocol: 'tun',
     settings: {
+      name: 'xray0',
+      mtu: 1500,
+      inet4_address: '172.19.0.1/30',
       autoRoute: true,
       strictRoute: true,
-      mtu: 1500,
+      stack: 'system',
     },
   }
 }
@@ -200,7 +199,7 @@ export function buildConfig(nodes: ParsedNode[], opts: BuildOptions = {}): Recor
     // gRPC API — для UI (ObservatoryService, RoutingService, StatsService).
     api: {
       tag: 'api',
-      listen: XRAY_API,
+      listen: XRAY_GRPC_ADDR,
       services: ['HandlerService', 'LoggerService', 'RoutingService', 'ObservatoryService', 'StatsService'],
     },
     stats: {},
@@ -233,8 +232,8 @@ export function buildConfig(nodes: ParsedNode[], opts: BuildOptions = {}): Recor
       tunInbound(),
       {
         tag: 'mixed-in',
-        listen: '127.0.0.1',
-        port: SOCKS_PORT,
+        listen: XRAY_SOCKS_HOST,
+        port: XRAY_SOCKS_PORT,
         protocol: 'socks',
         settings: { auth: 'noauth', udp: true },
         sniffing: { enabled: true, destOverride: ['http', 'tls', 'quic'] },

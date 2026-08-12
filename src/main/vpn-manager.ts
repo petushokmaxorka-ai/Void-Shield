@@ -598,37 +598,55 @@ export class VpnManager {
     override: string
     autoMode: boolean
     apiOk: boolean
+    socksOk: boolean
+    tunOk: boolean
   }> {
     const r = activeRunner()
     const running = r.isRunning()
     let activeNode = ''
     let override = ''
     let apiOk = false
+    let socksOk = false
+    let tunOk = false
     if (running) {
       try {
         if (r.kind === 'singbox') {
           const sb = singbox()
           const { selector, urltest } = await sb.getActiveNode()
           activeNode = selector || urltest
-          override = selector && selector !== urltest ? selector : ''  // selector!=urltest ⇒ manual pin
+          override = selector && selector !== urltest ? selector : ''
           apiOk = Boolean(urltest || selector)
+          socksOk = apiOk
+          tunOk = false // sing-box TUN probe: clash-api only today
         } else {
           const bi = await grpc.getBalancerInfo()
-          activeNode = bi.activeNode
+          activeNode = bi.activeNode || bi.override
+          if (!activeNode) {
+            activeNode = await grpc.inferActiveNodeFromObservatory()
+          }
           override = bi.override
           apiOk = bi.ok
+          socksOk = await runner.socksOk()
+          tunOk = await runner.tunOk()
         }
       } catch { /* core not ready yet */ }
     }
-    // Egress IP via SOCKS (only when running; both cores expose mixed-in on 7890).
     let egress = ''
     if (running) {
-      egress = _egressIp
-      if (Date.now() - _egressTs > EGRESS_TTL) {
-        void runner.probeEgress().then((ip) => {
-          if (ip) { _egressIp = ip; _egressTs = Date.now() }
-        }).catch(() => {})
+      const stale = !_egressIp || Date.now() - _egressTs > EGRESS_TTL
+      if (stale) {
+        try {
+          const ip = await runner.probeEgress()
+          if (ip) {
+            _egressIp = ip
+            _egressTs = Date.now()
+          }
+        } catch { /* probe failed */ }
       }
+      egress = _egressIp
+    } else {
+      _egressIp = ''
+      _egressTs = 0
     }
     return {
       running,
@@ -638,6 +656,8 @@ export class VpnManager {
       override,
       autoMode: override === '',
       apiOk,
+      socksOk,
+      tunOk,
     }
   }
 

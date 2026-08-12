@@ -1,185 +1,161 @@
 // ═══════════════════════════════════════════════════════════
 // VOID-SHIELD — xray Process Runner
 // ═══════════════════════════════════════════════════════════
-// Управляет жизненным циклом xray-процесса: spawn, kill, health-check.
-// Бинарь xray извлекается из AppImage в writable-директорию при первом запуске.
-//
-// SECURITY (AGENTS.md §3.2): spawn с аргументами, NEVER shell:true.
+// CoreRunner specialization for xray-core (gRPC API + mixed SOCKS inbound).
 
-import { spawn, ChildProcess, execFile } from 'child_process'
+import net from 'net'
+import { execFile } from 'child_process'
 import { join } from 'path'
-import { existsSync, mkdirSync, chmodSync, copyFileSync, appendFileSync, createReadStream } from 'fs'
-import { createInterface } from 'readline'
-import { app } from 'electron'
+import { CoreRunner } from './core-runner'
+import { XRAY_GRPC_HOST, XRAY_SOCKS_HOST, XRAY_SOCKS_PORT, XRAY_SOCKS_PROXY } from './xray-constants'
+import * as grpc from './grpc-client'
 
-// ─── Paths (portable, через app.getPath) ────────────────────
-export function dataDir(): string {
-  return app.getPath('userData')  // ~/.config/void-shield-desktop на Linux
-}
-export function xrayPath(): string {
-  return join(dataDir(), 'bin', process.platform === 'win32' ? 'xray.exe' : 'xray')
-}
-export function configPath(): string {
-  return join(dataDir(), 'xray-config.json')
-}
-export function logPath(): string {
-  return join(dataDir(), 'vpn.log')
-}
+export class XrayRunner extends CoreRunner {
+  readonly name = 'xray'
 
-// ─── Platform subdir name for bundled xray ──────────────────
-function bundledPlatformDir(): string {
-  const p = process.platform
-  const a = process.arch
-  if (p === 'linux' && a === 'x64') return 'linux-x64'
-  if (p === 'linux' && a === 'arm64') return 'linux-arm64'
-  if (p === 'win32' && a === 'x64') return 'windows-x64'
-  if (p === 'darwin' && a === 'x64') return 'darwin-x64'
-  if (p === 'darwin' && a === 'arm64') return 'darwin-arm64'
-  throw new Error(`Unsupported platform: ${p}-${a}`)
-}
-
-// ─── Extract bundled xray to userData on first run ──────────
-// AppImage mount is read-only; xray must live in a writable dir for setcap.
-export function ensureXrayExtracted(): void {
-  const dest = xrayPath()
-  if (existsSync(dest)) return  // already extracted
-  mkdirSync(join(dataDir(), 'bin'), { recursive: true })
-
-  // Find the bundled binary in resources.
-  const resourcesDir = process.resourcesPath ?? join(__dirname, '../..')
-  const platformDir = bundledPlatformDir()
-  const binName = process.platform === 'win32' ? 'xray.exe' : 'xray'
-  const src = join(resourcesDir, 'bin', platformDir, binName)
-  if (!existsSync(src)) {
-    throw new Error(`Bundled xray not found at ${src}. Run scripts/fetch-xray.sh --all before building.`)
+  // Keep legacy log filename (vpn.log) — users tail this path.
+  logPath(): string {
+    return join(this.dataDir(), 'vpn.log')
   }
-  copyFileSync(src, dest)
-  chmodSync(dest, 0o755)
-  // Windows: also copy wintun.dll (needed for TUN).
-  if (process.platform === 'win32') {
-    const wintunSrc = join(resourcesDir, 'bin', platformDir, 'wintun.dll')
-    if (existsSync(wintunSrc)) {
-      copyFileSync(wintunSrc, join(dataDir(), 'bin', 'wintun.dll'))
+
+  protected bundledPlatformDir(): string {
+    const p = process.platform
+    const a = process.arch
+    if (p === 'linux' && a === 'x64') return 'linux-x64'
+    if (p === 'linux' && a === 'arm64') return 'linux-arm64'
+    if (p === 'win32' && a === 'x64') return 'windows-x64'
+    if (p === 'darwin' && a === 'x64') return 'darwin-x64'
+    if (p === 'darwin' && a === 'arm64') return 'darwin-arm64'
+    throw new Error(`Unsupported platform: ${p}-${a}`)
+  }
+
+  protected binName(): string {
+    return process.platform === 'win32' ? 'xray.exe' : 'xray'
+  }
+
+  protected runArgs(): string[] {
+    return ['run', '-c', this.configPath()]
+  }
+
+  /** Poll SOCKS port + gRPC API (up to ~5s). */
+  protected async readyProbe(): Promise<boolean> {
+    for (let i = 0; i < 25; i++) {
+      if (!this.isRunning()) return false
+      if (await socksPortOpen()) return true
+      await new Promise((r) => setTimeout(r, 200))
+    }
+    return false
+  }
+
+  async apiOk(): Promise<boolean> {
+    try {
+      const bi = await grpc.getBalancerInfo()
+      return bi.ok
+    } catch {
+      return false
     }
   }
+
+  async tunUp(): Promise<boolean> {
+    if (process.platform === 'linux') {
+      return new Promise((resolve) => {
+        execFile('ip', ['link', 'show', 'xray0'], { timeout: 2000 }, (err, stdout) => {
+          resolve(!err && stdout.includes('xray0'))
+        })
+      })
+    }
+    if (process.platform === 'win32') {
+      return new Promise((resolve) => {
+        execFile('netsh', ['interface', 'show', 'interface'], { encoding: 'utf-8', timeout: 3000 }, (err, stdout) => {
+          resolve(!err && /xray/i.test(stdout))
+        })
+      })
+    }
+    return false
+  }
 }
 
-// ─── Runner state ───────────────────────────────────────────
-let proc: ChildProcess | null = null
-let startedAt = 0
+let _runner: XrayRunner | null = null
+function runner(): XrayRunner {
+  if (!_runner) _runner = new XrayRunner()
+  return _runner
+}
+
+function socksPortOpen(): Promise<boolean> {
+  return new Promise((resolve) => {
+    const sock = net.connect({ host: XRAY_SOCKS_HOST, port: XRAY_SOCKS_PORT })
+    const done = (ok: boolean) => {
+      sock.removeAllListeners()
+      try { sock.destroy() } catch { /* ignore */ }
+      resolve(ok)
+    }
+    sock.setTimeout(600)
+    sock.once('connect', () => done(true))
+    sock.once('error', () => done(false))
+    sock.once('timeout', () => done(false))
+  })
+}
+
+export function ensureXrayExtracted(): void {
+  runner().ensureExtracted()
+}
+
+export function xrayPath(): string {
+  return runner().binaryPath()
+}
+
+export function configPath(): string {
+  return runner().configPath()
+}
+
+export function logPath(): string {
+  return runner().logPath()
+}
 
 export function isRunning(): boolean {
-  return proc !== null && !proc.killed && proc.exitCode === null
+  return runner().isRunning()
 }
 
 export function startedTime(): number {
-  return startedAt
+  return runner().startedTime()
 }
 
-// ─── Start xray ─────────────────────────────────────────────
 export function start(onLine?: (line: string) => void): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (isRunning()) return resolve()
-    ensureXrayExtracted()
-    const bin = xrayPath()
-    if (!existsSync(configPath())) {
-      return reject(new Error('No xray-config.json — set up a subscription first'))
-    }
-
-    // Truncate log on each start (keep it bounded).
-    try { appendFileSync(logPath(), `\n--- VOID-SHIELD start ${new Date().toISOString()} ---\n`) } catch { /* ignore */ }
-
-    proc = spawn(bin, ['run', '-c', configPath()], {
-      stdio: ['ignore', 'pipe', 'pipe'],
-      windowsHide: true,
-    })
-    startedAt = Date.now()
-
-    const logStream = (label: string, stream: NodeJS.ReadableStream | null): void => {
-      if (!stream) return
-      const rl = createInterface({ input: stream })
-      rl.on('line', (line) => {
-        try { appendFileSync(logPath(), `${line}\n`) } catch { /* ignore */ }
-        onLine?.(line)
-      })
-    }
-    logStream('stdout', proc.stdout)
-    logStream('stderr', proc.stderr)
-
-    proc.on('error', (err) => {
-      proc = null
-      reject(new Error(`xray failed to start: ${err.message}`))
-    })
-    proc.on('exit', (code, signal) => {
-      const msg = `xray exited code=${code} signal=${signal}`
-      appendFileSync(logPath(), `${msg}\n`)
-      proc = null
-      // Non-zero exit within 3s = startup failure.
-      if (code !== 0 && code !== null && Date.now() - startedAt < 3000) {
-        reject(new Error(msg))
-      }
-    })
-
-    // Give xray ~2s to bind ports / fail fast.
-    setTimeout(() => {
-      if (isRunning()) resolve()
-      else reject(new Error('xray did not stay running'))
-    }, 2000)
-  })
+  void onLine // legacy callback unused — logs go to vpn.log
+  return runner().start()
 }
 
-// ─── Stop xray ──────────────────────────────────────────────
 export function stop(): Promise<void> {
+  return runner().stop()
+}
+
+export function tailLog(lines: number): Promise<string[]> {
+  return runner().tailLog(lines)
+}
+
+export function probeEgress(): Promise<string> {
   return new Promise((resolve) => {
-    if (!proc) return resolve()
-    const p = proc
-    proc.on('exit', () => resolve())
-    try {
-      // SIGTERM first, escalate to SIGKILL after 3s.
-      p.kill('SIGTERM')
-      setTimeout(() => {
-        if (!p.killed && p.exitCode === null) {
-          try { p.kill('SIGKILL') } catch { /* ignore */ }
-        }
-        resolve()
-      }, 3000)
-    } catch {
-      resolve()
-    }
-    proc = null
+    execFile(
+      'curl',
+      ['-4', '-sS', '--max-time', '4', '-x', XRAY_SOCKS_PROXY, 'https://api.ipify.org'],
+      { encoding: 'utf-8', timeout: 6000 },
+      (err, stdout) => resolve(err ? '' : stdout.trim())
+    )
   })
 }
 
-// ─── Tail the log ───────────────────────────────────────────
-export async function tailLog(lines: number): Promise<string[]> {
-  const max = Math.max(10, Math.min(lines, 1000))
-  if (!existsSync(logPath())) return []
-  return new Promise((resolve) => {
-    const out: string[] = []
-    const rl = createInterface({ input: createReadStream(logPath(), { encoding: 'utf-8' }) })
-    rl.on('line', (l) => {
-      out.push(l)
-      while (out.length > max) out.shift()
-    })
-    rl.on('close', () => resolve(out))
-    rl.on('error', () => resolve([]))
-  })
+export async function socksOk(): Promise<boolean> {
+  if (!isRunning()) return false
+  if (await socksPortOpen()) return true
+  return Boolean(await probeEgress())
 }
 
-// ─── Egress IP probe (via SOCKS inbound) ────────────────────
-function probeEgress(): Promise<string> {
-  return new Promise((resolve) => {
-    execFile('curl', ['-4', '-sS', '--max-time', '4', '-x', 'socks5://127.0.0.1:7893', 'https://api.ipify.org'],
-      { encoding: 'utf-8', timeout: 6000 }, (err, stdout) => {
-        resolve(err ? '' : stdout.trim())
-      })
-  })
+export async function tunOk(): Promise<boolean> {
+  if (!isRunning()) return false
+  return runner().tunUp()
 }
 
-// On Windows, curl may not exist — use a no-op fallback.
-if (process.platform === 'win32') {
-  // Override probeEgress for Windows (node fetch via proxy).
-  // Simplified: empty until a Windows curl/proxy lib is wired.
+export async function grpcOk(): Promise<boolean> {
+  if (!isRunning()) return false
+  return runner().apiOk()
 }
-
-export { probeEgress }

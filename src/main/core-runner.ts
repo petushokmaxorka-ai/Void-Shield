@@ -22,6 +22,7 @@ export abstract class CoreRunner {
   protected proc: ChildProcess | null = null
   protected startedAt = 0
   protected restarting = false
+  private intentionalStop = false
   private restartAttempts = 0
   private readonly MAX_RESTART_ATTEMPTS = 5
 
@@ -168,9 +169,9 @@ export abstract class CoreRunner {
       void this.writeLog(`${this.name} exited code=${code} signal=${signal}`)
       const wasRunning = this.startedAt > 0 && Date.now() - this.startedAt > 3000
       this.proc = null
-      // Crash-recovery: if it died after the startup window (not a clean stop),
-      // attempt a bounded restart with backoff.
-      if (wasRunning && !this.restarting && code !== 0 && code !== null) {
+      // Recover from unexpected exits (including code=0 — xray sometimes exits
+      // cleanly after TUN/observatory faults). Skip when user called stop().
+      if (wasRunning && !this.restarting && !this.intentionalStop) {
         void this.maybeRestart()
       }
     })
@@ -208,20 +209,24 @@ export abstract class CoreRunner {
   async stop(): Promise<void> {
     const p = this.proc
     if (!p) return
+    this.intentionalStop = true
     return new Promise((resolve) => {
-      p.on('exit', () => resolve())
+      const finish = () => {
+        this.proc = null
+        this.intentionalStop = false
+        resolve()
+      }
+      p.once('exit', finish)
       try {
         p.kill('SIGTERM')
         setTimeout(() => {
           if (!p.killed && p.exitCode === null) {
             try { p.kill('SIGKILL') } catch { /* ignore */ }
           }
-          resolve()
         }, 3000)
       } catch {
-        resolve()
+        finish()
       }
-      this.proc = null
     })
   }
 
