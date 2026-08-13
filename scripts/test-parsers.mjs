@@ -393,6 +393,7 @@ test('xray buildConfig defaults to SOCKS-only (no TUN)', () => {
   const cfg = buildConfig(parsed.nodes)
   const tags = (cfg.inbounds || []).map((i) => i.tag)
   assert.ok(tags.includes('mixed-in'), 'SOCKS inbound required')
+  assert.ok(tags.includes('http-in'), 'HTTP inbound required for Windows system proxy')
   assert.ok(!tags.includes('tun-in'), 'TUN must be opt-in (enableTun)')
   const withTun = buildConfig(parsed.nodes, { enableTun: true })
   assert.ok(withTun.inbounds.some((i) => i.tag === 'tun-in'), 'enableTun adds tun-in')

@@ -28,6 +28,8 @@ import * as runner from './xray-runner'
 import { checkCaps, grantCapsLinux, platformNeedsCaps } from './capabilities'
 import { loadSettings, updateSettings, getSubscriptionUrl, setSubscriptionUrl, Settings, SubscriptionQuota, CoreEngine } from './storage'
 import { sortNodesForRoster } from '../shared/node-region.js'
+import { applySystemProxy, clearSystemProxy } from './system-proxy'
+import { XRAY_HTTP_PORT, XRAY_SOCKS_HOST } from './xray-constants'
 
 // sing-box runner instance (lazy — only used when active core is singbox).
 let _singbox: SingboxRunner | null = null
@@ -427,8 +429,15 @@ export class VpnManager {
     const core = s.core
     const scenario = s.scenario
     const enableTun = s.enableTun === true
+    // Windows without TUN: HAPP-style system proxy (browsers use HTTP inbound).
+    const setSystemProxy = process.platform === 'win32' && !enableTun
     if (core === 'singbox') {
-      const sbConfig = buildSingboxConfig(nodes, { filter: opts?.filter, scenario, enableTun })
+      const sbConfig = buildSingboxConfig(nodes, {
+        filter: opts?.filter,
+        scenario,
+        enableTun,
+        setSystemProxy,
+      })
       writeFileSync(singbox().configPath(), JSON.stringify(sbConfig, null, 2))
     } else {
       const xConfig = buildConfig(nodes, { filter: opts?.filter, enableTun })
@@ -438,6 +447,42 @@ export class VpnManager {
       setSubscriptionUrl(opts.subscriptionUrl)
     }
     updateSettings({ lastUpdate: Date.now() })
+  }
+
+  /** Ensure http-in exists (upgrade configs written before v1.0.9). */
+  private ensureXrayHttpInbound(): void {
+    const p = runner.configPath()
+    if (!existsSync(p)) return
+    try {
+      const cfg = JSON.parse(readFileSync(p, 'utf-8')) as {
+        inbounds?: Array<Record<string, unknown>>
+      }
+      const inbounds = cfg.inbounds ?? []
+      if (inbounds.some((i) => i.tag === 'http-in')) return
+      inbounds.push({
+        tag: 'http-in',
+        listen: XRAY_SOCKS_HOST,
+        port: XRAY_HTTP_PORT,
+        protocol: 'http',
+        settings: { allowTransparent: false },
+        sniffing: { enabled: true, destOverride: ['http', 'tls'] },
+      })
+      cfg.inbounds = inbounds
+      writeFileSync(p, JSON.stringify(cfg, null, 2))
+    } catch {
+      /* next import rebuilds */
+    }
+  }
+
+  /** After xray start on Windows: WinINET → http-in (like HAPP without TUN). */
+  private applyTrafficCapture(enableTun: boolean): void {
+    if (process.platform === 'win32' && !enableTun) {
+      applySystemProxy(XRAY_SOCKS_HOST, XRAY_HTTP_PORT)
+    }
+  }
+
+  private releaseTrafficCapture(): void {
+    clearSystemProxy()
   }
 
   /** Strip TUN inbound from an already-written xray config (SOCKS fallback). */
@@ -669,11 +714,12 @@ export class VpnManager {
     return true
   }
 
-  // ─── Start VPN (SOCKS primary; TUN optional) ───────────────
+  // ─── Start VPN (SOCKS + system proxy on Windows; TUN optional) ──
   async start(): Promise<void> {
     const s = loadSettings()
     const r = activeRunner()
     r.kind === 'xray' ? runner.ensureXrayExtracted() : singbox().ensureExtracted()
+    if (r.kind === 'xray') this.ensureXrayHttpInbound()
     // Caps only required when TUN mode is enabled.
     if (s.enableTun && platformNeedsCaps()) {
       const capState = checkCaps(r.path())
@@ -681,12 +727,12 @@ export class VpnManager {
         throw new Error('TUN capabilities not granted. Call grantCapabilities() first.')
       }
     }
+    const runCore = async (): Promise<void> => {
+      if (r.kind === 'xray') await runner.start()
+      else await singbox().start()
+    }
     try {
-      if (r.kind === 'xray') {
-        await runner.start()
-      } else {
-        await singbox().start()
-      }
+      await runCore()
     } catch (e) {
       const msg = (e as Error).message || ''
       // Auto-fallback: old configs always had TUN; Windows without admin exits immediately.
@@ -694,15 +740,18 @@ export class VpnManager {
         const stripped = this.stripTunFromXrayConfig()
         if (stripped || s.enableTun) {
           updateSettings({ enableTun: false })
-          await runner.start()
+          await runCore()
+          this.applyTrafficCapture(false)
           return
         }
       }
       throw e
     }
+    this.applyTrafficCapture(s.enableTun === true)
   }
 
   async stop(): Promise<void> {
+    this.releaseTrafficCapture()
     const r = activeRunner()
     if (r.kind === 'xray') await runner.stop()
     else await singbox().stop()

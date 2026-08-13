@@ -11,7 +11,7 @@
 // "IGNITION FAILED: xray did not stay running".
 
 import type { ParsedNode, Transport, TransportOpts, TlsOpts } from './subscription'
-import { XRAY_GRPC_ADDR, XRAY_SOCKS_HOST, XRAY_SOCKS_PORT } from './xray-constants.js'
+import { XRAY_GRPC_ADDR, XRAY_SOCKS_HOST, XRAY_SOCKS_PORT, XRAY_HTTP_PORT } from './xray-constants.js'
 import { autoBalancerTags } from '../shared/node-region.js'
 
 const BALANCER_TAG = 'best'
@@ -249,6 +249,15 @@ export function buildConfig(nodes: ParsedNode[], opts: BuildOptions = {}): Recor
         protocol: 'socks',
         settings: { auth: 'noauth', udp: true },
         sniffing: { enabled: true, destOverride: ['http', 'tls', 'quic'] },
+      },
+      // HTTP for Windows WinINET system proxy (browsers). Harmless on Linux.
+      {
+        tag: 'http-in',
+        listen: XRAY_SOCKS_HOST,
+        port: XRAY_HTTP_PORT,
+        protocol: 'http',
+        settings: { allowTransparent: false },
+        sniffing: { enabled: true, destOverride: ['http', 'tls'] },
       },
     ],
     outbounds: [
