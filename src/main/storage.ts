@@ -24,6 +24,11 @@ export interface Settings {
   // Decrypted on load via getSubscriptionUrl().
   subscriptionUrlEnc: string
   capsGranted: boolean
+  /**
+   * System-wide TUN for xray/sing-box. Default false — SOCKS/mixed only
+   * (reliable ignition on Windows without admin). Set true after Linux setcap.
+   */
+  enableTun: boolean
   lastUpdate: number
   workingUserAgent: string
   /** Optional override tried first when fetching subscriptions (Remnawave / panel UA). */
@@ -38,6 +43,7 @@ export interface Settings {
 const DEFAULT: Settings = {
   subscriptionUrlEnc: '',
   capsGranted: false,
+  enableTun: false,
   lastUpdate: 0,
   workingUserAgent: '',
   customUserAgent: '',
@@ -45,7 +51,7 @@ const DEFAULT: Settings = {
   core: 'xray',
   scenario: 'proxy',
   autoUpdateHours: 24,
-  version: 6,
+  version: 7,
 }
 
 function settingsPath(): string {
@@ -97,6 +103,12 @@ export function loadSettings(): Settings {
       console.log('[storage] Migrating v4→v5: encrypting subscriptionUrl')
       raw.subscriptionUrlEnc = encryptSubscriptionUrl(raw.subscriptionUrl)
       delete raw.subscriptionUrl
+    }
+
+    // Migration v6→v7: enableTun (default false). Linux users who already
+    // granted setcap keep system-wide TUN; Windows stays SOCKS-only.
+    if (raw.enableTun === undefined && process.platform === 'linux' && raw.capsGranted === true) {
+      raw.enableTun = true
     }
 
     return { ...DEFAULT, ...raw, version: DEFAULT.version }

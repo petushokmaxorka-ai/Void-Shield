@@ -63,24 +63,28 @@ export abstract class CoreRunner {
 
   ensureExtracted(): void {
     const dest = this.binaryPath()
+    let bundledDir: string
     if (existsSync(dest)) {
-      // Even if the binary exists, ensure geo data files are present (they
+      // Even if the binary exists, ensure geo data / wintun are present (they
       // may have been added in a later build). Idempotent.
-      this.extractGeoData(dirname(this.findBundledBinary()))
-      return
+      bundledDir = dirname(this.findBundledBinary())
+      this.extractGeoData(bundledDir)
+    } else {
+      mkdirSync(this.binDir(), { recursive: true })
+      const srcPath = this.findBundledBinary()
+      bundledDir = dirname(srcPath)
+      console.log(`[void-shield] extracting ${this.name}: ${srcPath} → ${dest}`)
+      copyFileSync(srcPath, dest)
+      chmodSync(dest, 0o755)
+      this.extractGeoData(bundledDir)
     }
-    mkdirSync(this.binDir(), { recursive: true })
-    const srcPath = this.findBundledBinary()
-    console.log(`[void-shield] extracting ${this.name}: ${srcPath} → ${dest}`)
-    copyFileSync(srcPath, dest)
-    chmodSync(dest, 0o755)
-    // Windows xray: also copy wintun.dll if present.
+    // Windows xray: always refresh wintun.dll when bundled (TUN needs it).
     if (process.platform === 'win32' && this.name === 'xray') {
-      const wintunSrc = join(dirname(srcPath), 'wintun.dll')
-      if (existsSync(wintunSrc)) copyFileSync(wintunSrc, join(this.binDir(), 'wintun.dll'))
+      const wintunSrc = join(bundledDir, 'wintun.dll')
+      if (existsSync(wintunSrc)) {
+        try { copyFileSync(wintunSrc, join(this.binDir(), 'wintun.dll')) } catch { /* ignore */ }
+      }
     }
-    // Copy geoip.dat + geosite.dat next to xray (needed for geoip: rules).
-    this.extractGeoData(dirname(srcPath))
   }
 
   // Copy geoip.dat + geosite.dat from the bundled resources into bin/.
@@ -138,7 +142,13 @@ export abstract class CoreRunner {
     // Readiness window — give core up to 5s to bind / respond.
     const ok = await this.readyProbe()
     if (!ok && !this.isRunning()) {
-      throw new Error(`${this.name} did not stay running`)
+      // Brief pause so async stderr flush lands in the log before we read it.
+      await new Promise((r) => setTimeout(r, 150))
+      const tail = (await this.tailLog(30)).slice(-12)
+      const hint = tail.length
+        ? `\n--- ${this.name} log ---\n${tail.join('\n')}`
+        : ''
+      throw new Error(`${this.name} did not stay running${hint}`)
     }
     this.restartAttempts = 0  // successful start resets backoff
   }

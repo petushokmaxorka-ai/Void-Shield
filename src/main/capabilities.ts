@@ -2,7 +2,8 @@
 // VOID-SHIELD — TUN Capabilities
 // ═══════════════════════════════════════════════════════════
 // TUN-режим требует CAP_NET_ADMIN на Linux. На macOS — root. На Windows —
-// wintun.dll (бандлится, доп. прав не нужно если запущен как админ).
+// wintun.dll + обычно Run as administrator. Поэтому ignition по умолчанию
+// SOCKS-only (enableTun=false); TUN включается после setcap на Linux.
 //
 // Подход: одноразовый setcap через pkexec (Linux). Запоминаем в settings.
 

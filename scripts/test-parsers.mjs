@@ -12,6 +12,7 @@ import {
   parseUserInfoHeader,
 } from '../out/test-src/main/subscription.js'
 import { buildSingboxConfig } from '../out/test-src/main/singbox-config-builder.js'
+import { buildConfig } from '../out/test-src/main/config-builder.js'
 import { execFileSync } from 'child_process'
 import { existsSync, writeFileSync } from 'fs'
 
@@ -383,4 +384,37 @@ test('sing-box config validates with real binary (all protocols)', { skip: !SING
     threw = e
   }
   assert.equal(threw, null, `sing-box check failed:\n${threw?.stderr?.toString() ?? threw?.message}`)
+})
+
+// ─── xray config: SOCKS-only by default (Windows ignition) ──
+test('xray buildConfig defaults to SOCKS-only (no TUN)', () => {
+  const parsed = parseSubscription(VLESS_REALITY)
+  assert.equal(parsed.nodes.length, 1)
+  const cfg = buildConfig(parsed.nodes)
+  const tags = (cfg.inbounds || []).map((i) => i.tag)
+  assert.ok(tags.includes('mixed-in'), 'SOCKS inbound required')
+  assert.ok(!tags.includes('tun-in'), 'TUN must be opt-in (enableTun)')
+  const withTun = buildConfig(parsed.nodes, { enableTun: true })
+  assert.ok(withTun.inbounds.some((i) => i.tag === 'tun-in'), 'enableTun adds tun-in')
+})
+
+const XRAY_BIN = new URL('../resources/bin/linux-x64/xray', import.meta.url).pathname
+const XRAY_HOME = process.env.HOME
+  ? `${process.env.HOME}/.config/void-shield/bin/xray`
+  : ''
+const XRAY_AVAILABLE = existsSync(XRAY_BIN) || existsSync(XRAY_HOME)
+
+test('xray SOCKS-only config validates with real binary', { skip: !XRAY_AVAILABLE && 'xray binary not found' }, () => {
+  const bin = existsSync(XRAY_BIN) ? XRAY_BIN : XRAY_HOME
+  const parsed = parseSubscription(VLESS_REALITY)
+  const cfg = buildConfig(parsed.nodes) // enableTun false
+  const tmpConfig = '/tmp/vs-test-xray-socks.json'
+  writeFileSync(tmpConfig, JSON.stringify(cfg, null, 2))
+  let threw = null
+  try {
+    execFileSync(bin, ['run', '-test', '-c', tmpConfig], { stdio: 'pipe', timeout: 15000 })
+  } catch (e) {
+    threw = e
+  }
+  assert.equal(threw, null, `xray -test failed:\n${threw?.stderr?.toString() ?? threw?.message}`)
 })

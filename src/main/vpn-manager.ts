@@ -423,19 +423,39 @@ export class VpnManager {
     nodes: ParsedNode[],
     opts?: { filter?: (n: ParsedNode) => boolean; subscriptionUrl?: string }
   ): void {
-    const core = loadSettings().core
-    const scenario = loadSettings().scenario
+    const s = loadSettings()
+    const core = s.core
+    const scenario = s.scenario
+    const enableTun = s.enableTun === true
     if (core === 'singbox') {
-      const sbConfig = buildSingboxConfig(nodes, { filter: opts?.filter, scenario })
+      const sbConfig = buildSingboxConfig(nodes, { filter: opts?.filter, scenario, enableTun })
       writeFileSync(singbox().configPath(), JSON.stringify(sbConfig, null, 2))
     } else {
-      const xConfig = buildConfig(nodes, { filter: opts?.filter })
+      const xConfig = buildConfig(nodes, { filter: opts?.filter, enableTun })
       writeFileSync(runner.configPath(), JSON.stringify(xConfig, null, 2))
     }
     if (opts?.subscriptionUrl !== undefined) {
       setSubscriptionUrl(opts.subscriptionUrl)
     }
     updateSettings({ lastUpdate: Date.now() })
+  }
+
+  /** Strip TUN inbound from an already-written xray config (SOCKS fallback). */
+  private stripTunFromXrayConfig(): boolean {
+    const p = runner.configPath()
+    if (!existsSync(p)) return false
+    try {
+      const cfg = JSON.parse(readFileSync(p, 'utf-8')) as {
+        inbounds?: Array<{ tag?: string }>
+      }
+      const before = cfg.inbounds?.length ?? 0
+      cfg.inbounds = (cfg.inbounds ?? []).filter((i) => i.tag !== 'tun-in')
+      if ((cfg.inbounds?.length ?? 0) === before) return false
+      writeFileSync(p, JSON.stringify(cfg, null, 2))
+      return true
+    } catch {
+      return false
+    }
   }
 
   // ─── Update subscription (download → parse → build config) ─
@@ -637,30 +657,48 @@ export class VpnManager {
     if (process.platform === 'linux') {
       let ok = grantCapsLinux(runner.xrayPath())
       try { ok = grantCapsLinux(singbox().binaryPath()) && ok } catch { /* ignore */ }
-      if (ok) updateSettings({ capsGranted: true })
+      if (ok) {
+        // After setcap, prefer system-wide TUN on next config rebuild.
+        updateSettings({ capsGranted: true, enableTun: true })
+      }
       return ok
     }
     // macOS/Windows: no setcap flow; mark granted (see capabilities.ts notes).
+    // Keep enableTun false — SOCKS ignition works without admin; TUN needs elevation.
     updateSettings({ capsGranted: true })
     return true
   }
 
-  // ─── Start VPN (TUN) ──────────────────────────────────────
+  // ─── Start VPN (SOCKS primary; TUN optional) ───────────────
   async start(): Promise<void> {
     const s = loadSettings()
     const r = activeRunner()
     r.kind === 'xray' ? runner.ensureXrayExtracted() : singbox().ensureExtracted()
-    // Check caps if platform needs them (on the active core's binary).
-    if (platformNeedsCaps()) {
+    // Caps only required when TUN mode is enabled.
+    if (s.enableTun && platformNeedsCaps()) {
       const capState = checkCaps(r.path())
       if (capState.needsElevation && !s.capsGranted) {
         throw new Error('TUN capabilities not granted. Call grantCapabilities() first.')
       }
     }
-    if (r.kind === 'xray') {
-      await runner.start()
-    } else {
-      await singbox().start()
+    try {
+      if (r.kind === 'xray') {
+        await runner.start()
+      } else {
+        await singbox().start()
+      }
+    } catch (e) {
+      const msg = (e as Error).message || ''
+      // Auto-fallback: old configs always had TUN; Windows without admin exits immediately.
+      if (r.kind === 'xray' && /did not stay running/i.test(msg)) {
+        const stripped = this.stripTunFromXrayConfig()
+        if (stripped || s.enableTun) {
+          updateSettings({ enableTun: false })
+          await runner.start()
+          return
+        }
+      }
+      throw e
     }
   }
 

@@ -15,6 +15,7 @@
   "include": [
     "src/main/subscription.ts",
     "src/main/config-builder.ts",
+    "src/main/xray-constants.ts",
     "src/main/singbox-config-builder.ts",
     "src/main/routing-scenarios.ts",
     "src/shared/node-region.ts"

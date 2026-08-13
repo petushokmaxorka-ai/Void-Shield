@@ -5,11 +5,13 @@
 // Поддержка: vless (+reality), vmess, trojan, shadowsocks.
 // Транспорты: tcp, ws, grpc, xhttp, httpupgrade, h2, quic.
 //
-// Структура: TUN (system-wide перехват) + SOCKS 7890 (для egress-IP пробы)
+// Структура: SOCKS 7890 (primary — работает без admin/wintun) + optional TUN
 //   + gRPC API 8086 (для UI) + outbounds + leastPing balancer.
+// TUN opt-in (как у sing-box): без CAP_NET_ADMIN / admin xray сразу exit →
+// "IGNITION FAILED: xray did not stay running".
 
 import type { ParsedNode, Transport, TransportOpts, TlsOpts } from './subscription'
-import { XRAY_GRPC_ADDR, XRAY_SOCKS_HOST, XRAY_SOCKS_PORT } from './xray-constants'
+import { XRAY_GRPC_ADDR, XRAY_SOCKS_HOST, XRAY_SOCKS_PORT } from './xray-constants.js'
 import { autoBalancerTags } from '../shared/node-region.js'
 
 const BALANCER_TAG = 'best'
@@ -188,6 +190,11 @@ export interface BuildOptions {
   filter?: (n: ParsedNode) => boolean
   /** Custom DNS servers (default: cloudflare + google + localhost). */
   dnsServers?: Record<string, unknown>[]
+  /**
+   * System-wide TUN (autoRoute). Default false — SOCKS-only ignition.
+   * Enable only after Linux setcap / Windows admin + wintun.dll.
+   */
+  enableTun?: boolean
 }
 
 export function buildConfig(nodes: ParsedNode[], opts: BuildOptions = {}): Record<string, unknown> {
@@ -196,10 +203,12 @@ export function buildConfig(nodes: ParsedNode[], opts: BuildOptions = {}): Recor
   const tags = outbounds.map((o) => o.tag as string)
   const balancerSelector = autoBalancerTags(tags)
   const balancerFallback = balancerSelector[0] ?? tags[0] ?? 'direct'
+  const enableTun = opts.enableTun === true
 
   return {
     log: { loglevel: 'warning' },
     // gRPC API — для UI (ObservatoryService, RoutingService, StatsService).
+    // listen: creates the gRPC server directly (no separate api outbound needed).
     api: {
       tag: 'api',
       listen: XRAY_GRPC_ADDR,
@@ -232,7 +241,7 @@ export function buildConfig(nodes: ParsedNode[], opts: BuildOptions = {}): Recor
       disableCache: false,
     },
     inbounds: [
-      tunInbound(),
+      ...(enableTun ? [tunInbound()] : []),
       {
         tag: 'mixed-in',
         listen: XRAY_SOCKS_HOST,
@@ -261,9 +270,7 @@ export function buildConfig(nodes: ParsedNode[], opts: BuildOptions = {}): Recor
           '10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '100.64.0.0/10',
           '127.0.0.0/8', '169.254.0.0/16', '224.0.0.0/4', 'fc00::/7', 'fe80::/10',
         ] },
-        // gRPC API inbound → api outbound (so xray can hear itself).
-        { type: 'field', inboundTag: ['api'], outboundTag: 'api' },
-        // Everything else — through the balancer (TUN captures it).
+        // Everything else — through the balancer (SOCKS and/or TUN).
         { type: 'field', balancerTag: BALANCER_TAG, network: 'tcp,udp' },
       ],
     },
