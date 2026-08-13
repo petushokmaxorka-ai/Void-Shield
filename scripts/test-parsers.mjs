@@ -186,7 +186,7 @@ proxies:
   assert.match(r.error ?? '', /whitelist|HAPP|fake|placeholder/i)
 })
 
-test('whitelist stub error mentions Import FlClashX', () => {
+test('whitelist stub error mentions Import File or FlClashX', () => {
   const yaml = `
 proxies:
   - name: "Установите HAPP"
@@ -198,7 +198,7 @@ proxies:
 `
   const r = parseSubscription(yaml)
   assert.equal(r.nodes.length, 0)
-  assert.match(r.error ?? '', /Import FlClashX|Custom User-Agent/i)
+  assert.match(r.error ?? '', /Import FlClashX|IMPORT FILE|void-shield-nodes|Custom User-Agent/i)
 })
 
 test('keeps real nodes alongside (mixed real + fake)', () => {
