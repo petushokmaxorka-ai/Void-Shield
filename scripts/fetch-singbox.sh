@@ -30,7 +30,7 @@ mkdir -p "${DEST_DIR}"
 PROXY="${https_proxy:-${HTTPS_PROXY:-}}"
 # --retry: GitHub release CDN occasionally RSTs mid-handshake (censorware);
 # a couple of retries makes the fetch reliable.
-CURL_OPTS=(-4 -sS --max-time 120 -L --retry 3 --retry-delay 2)
+CURL_OPTS=(-sS --max-time 180 -L --retry 5 --retry-all-errors --retry-delay 3)
 if [ -n "${PROXY}" ]; then CURL_OPTS+=(-x "${PROXY}"); fi
 
 API_HEADERS=()
