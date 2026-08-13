@@ -3,7 +3,8 @@
 // ═══════════════════════════════════════════════════════════
 // TUN-режим требует CAP_NET_ADMIN на Linux. На macOS — root. На Windows —
 // wintun.dll + обычно Run as administrator. Поэтому ignition по умолчанию
-// SOCKS-only (enableTun=false); TUN включается после setcap на Linux.
+// SOCKS-only (enableTun=false) is the fallback when TUN cannot start.
+// App default is enableTun=true; start() strips TUN if setcap/admin is missing.
 //
 // Подход: одноразовый setcap через pkexec (Linux). Запоминаем в settings.
 

@@ -31,6 +31,12 @@ If Releases is empty, check [Actions](https://github.com/petushokmaxorka-ai/Void
 Most providers work with built-in User-Agent negotiation.  
 If a panel only allows a whitelist app (e.g. “Install HAPP” stubs), use **Import File** or set a **Custom User-Agent**.
 
+### Capture (no admin for browsers)
+
+- **TUN** (default): full VPN including UDP/games. Linux: one-time password for `setcap`. Windows: Run as administrator.
+- **Without TUN**: browsers use the OS proxy (`127.0.0.1:7894` xray / `:7899` sing-box). Games/UDP stay off-VPN.
+- **Gosuslugi / nalog / gov.ru**: each connection uses a Russian node (or direct if none). Other sites stay on foreign AUTO — no global node flip.
+
 ### License
 
 **MIT** — you may use, modify, and share freely.  
@@ -73,6 +79,12 @@ FlClashX не нужен. systemd не нужен. Отдельный VPN в с�
 Большинство провайдеров работают с встроенным перебором User-Agent.  
 Если панель отдаёт заглушку «Установите HAPP» — **Import File** или **Custom User-Agent**.
 
+### Перехват (админ для браузера не нужен)
+
+- **TUN** (по умолчанию): полноценный VPN, включая UDP/игры. Linux: один раз пароль на `setcap`. Windows: «Запуск от имени администратора».
+- **Без TUN**: браузеры идут через системный прокси (`127.0.0.1:7894` xray / `:7899` sing-box). Игры/UDP мимо.
+- **Госуслуги / налог / gov.ru**: это соединение — российская нода (или напрямую, если RU-нод нет). Остальной трафик остаётся на зарубежном AUTO.
+
 ### Лицензия
 
 **MIT** — пользоваться, менять и распространять можно свободно.  
@@ -107,8 +119,8 @@ Main  VpnManager → fetch URL → parse → build config → spawn xray/sing-bo
 ## Releasing
 
 ```bash
-git tag v1.0.2
-git push origin v1.0.2
+git tag v1.1.0
+git push origin v1.1.0
 ```
 
 Push a tag `v*` → GitHub Actions builds Linux AppImage + Windows NSIS → Release assets.

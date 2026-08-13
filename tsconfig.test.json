@@ -18,6 +18,7 @@
     "src/main/xray-constants.ts",
     "src/main/singbox-config-builder.ts",
     "src/main/routing-scenarios.ts",
-    "src/shared/node-region.ts"
+    "src/shared/node-region.ts",
+    "src/shared/ru-civic-domains.ts"
   ]
 }

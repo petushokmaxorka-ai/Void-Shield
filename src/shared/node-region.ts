@@ -54,3 +54,8 @@ export function autoBalancerTags(allTags: string[]): string[] {
   const foreign = allTags.filter((t) => !isDomesticRuNode(t))
   return foreign.length > 0 ? foreign : allTags
 }
+
+/** Domestic RU exits for Gosuslugi / gov split (empty → civic traffic goes direct). */
+export function ruHomeTags(allTags: string[]): string[] {
+  return allTags.filter(isDomesticRuNode)
+}

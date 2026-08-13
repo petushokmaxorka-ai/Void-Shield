@@ -12,7 +12,8 @@
 
 import type { ParsedNode, TransportOpts, TlsOpts } from './subscription'
 import { scenarioRules, scenarioRuleSetDefs, scenarioFinal, type Scenario } from './routing-scenarios.js'
-import { autoBalancerTags } from '../shared/node-region.js'
+import { autoBalancerTags, ruHomeTags } from '../shared/node-region.js'
+import { RU_CIVIC_DOMAIN_SUFFIXES } from '../shared/ru-civic-domains.js'
 
 // clash-api port — NOT 9090 (often occupied by mihomo/clash on dev machines).
 // 9097 is our dedicated port; the runner + vpn-manager reference this constant.
@@ -233,6 +234,20 @@ function wireguardEndpointFromNode(n: ParsedNode): Record<string, unknown> {
 
 const URLTEST_TAG = 'auto'
 const SELECTOR_TAG = 'proxy'
+const RU_HOME_TAG = 'ru-home'
+
+export function singboxTunInbound(): Record<string, unknown> {
+  return {
+    type: 'tun',
+    tag: 'tun-in',
+    interface_name: 'tun0',
+    address: ['172.19.0.1/30'],
+    auto_route: true,
+    strict_route: true,
+    stack: 'system',
+    platform: { http_proxy: { enabled: false } },
+  }
+}
 
 export function buildSingboxConfig(nodes: ParsedNode[], opts: SingboxBuildOptions = {}): Record<string, unknown> {
   const keep = opts.filter ? nodes.filter(opts.filter) : nodes
@@ -245,6 +260,8 @@ export function buildSingboxConfig(nodes: ParsedNode[], opts: SingboxBuildOption
   const endpoints = wgNodes.map(wireguardEndpointFromNode)
   const tags = [...outbounds, ...endpoints].map((o) => o.tag as string)
   const autoTags = autoBalancerTags(tags)
+  const ruTags = ruHomeTags(tags)
+  const civicOutbound = ruTags.length > 0 ? RU_HOME_TAG : 'direct'
 
   return {
     log: {
@@ -288,16 +305,7 @@ export function buildSingboxConfig(nodes: ParsedNode[], opts: SingboxBuildOption
       //    proxy needs that same DNS to connect → deadlock). TUN should be a
       //    user-enabled opt-in after the proxy is verified working.
       //    Enable via opts.enableTun = true (Phase: tray toggle "System-wide").
-      ...(opts.enableTun ? [{
-        type: 'tun',
-        tag: 'tun-in',
-        interface_name: 'tun0',
-        address: ['172.19.0.1/30'],
-        auto_route: true,
-        strict_route: true,
-        stack: 'system',
-        platform: { http_proxy: { enabled: false } },
-      }] : []),
+      ...(opts.enableTun ? [singboxTunInbound()] : []),
       // 2. Mixed (SOCKS+HTTP) — primary inbound. Apps configure proxy to
       //    127.0.0.1:7899 and all their traffic goes through the VPN. This is
       //    how v2rayN/Hiddify work by default (TUN is opt-in). No DNS loop.
@@ -310,7 +318,7 @@ export function buildSingboxConfig(nodes: ParsedNode[], opts: SingboxBuildOption
       },
     ],
     outbounds: [
-      // urltest — авто-выбор самого быстрого узла (раз в interval).
+      // urltest — авто-выбор самого быстрого зарубежного узла (раз в interval).
       {
         type: 'urltest',
         tag: URLTEST_TAG,
@@ -320,6 +328,15 @@ export function buildSingboxConfig(nodes: ParsedNode[], opts: SingboxBuildOption
         tolerance: 50,        // ms — не прыгать между близкими узлами
         idle_timeout: '30m',
       },
+      ...(ruTags.length > 0 ? [{
+        type: 'urltest',
+        tag: RU_HOME_TAG,
+        outbounds: ruTags,
+        url: opts.testUrl ?? 'https://www.gstatic.com/generate_204',
+        interval: opts.testInterval ?? '3m',
+        tolerance: 80,
+        idle_timeout: '30m',
+      }] : []),
       // selector — ручной выбор (UI переключает через clash-api).
       {
         type: 'selector',
@@ -343,6 +360,8 @@ export function buildSingboxConfig(nodes: ParsedNode[], opts: SingboxBuildOption
         // DNS hijack — route DNS queries from TUN through sing-box DNS resolver.
         // (1.11+: `dns` outbound removed; use `action: 'hijack-dns'` rule.)
         { action: 'hijack-dns' },
+        // Gosuslugi / gov — RU node (or direct). Other connections stay on foreign AUTO.
+        { domain_suffix: RU_CIVIC_DOMAIN_SUFFIXES, outbound: civicOutbound },
         // Scenario-specific bypass rules (e.g. RU/CN domains → direct).
         // Generated BEFORE LAN-bypass so geo rules win for matching traffic.
         ...scenarioRules(opts.scenario ?? 'bypass-lan'),

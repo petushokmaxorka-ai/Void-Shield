@@ -25,8 +25,8 @@ export interface Settings {
   subscriptionUrlEnc: string
   capsGranted: boolean
   /**
-   * System-wide TUN for xray/sing-box. Default false — SOCKS/mixed only
-   * (reliable ignition on Windows without admin). Set true after Linux setcap.
+   * System-wide TUN. Default true — try full capture (games/UDP).
+   * If TUN fails (no admin / no setcap), start() falls back to SOCKS + OS proxy.
    */
   enableTun: boolean
   lastUpdate: number
@@ -43,7 +43,7 @@ export interface Settings {
 const DEFAULT: Settings = {
   subscriptionUrlEnc: '',
   capsGranted: false,
-  enableTun: false,
+  enableTun: true,
   lastUpdate: 0,
   workingUserAgent: '',
   customUserAgent: '',
@@ -51,7 +51,7 @@ const DEFAULT: Settings = {
   core: 'xray',
   scenario: 'proxy',
   autoUpdateHours: 24,
-  version: 7,
+  version: 8,
 }
 
 function settingsPath(): string {
@@ -108,6 +108,11 @@ export function loadSettings(): Settings {
     // Migration v6→v7: enableTun (default false). Linux users who already
     // granted setcap keep system-wide TUN; Windows stays SOCKS-only.
     if (raw.enableTun === undefined && process.platform === 'linux' && raw.capsGranted === true) {
+      raw.enableTun = true
+    }
+    // Migration →v8: try TUN by default. start() falls back to SOCKS + OS proxy.
+    const prevVersion = typeof raw.version === 'number' ? raw.version : 0
+    if (prevVersion < 8 && raw.enableTun === false) {
       raw.enableTun = true
     }
 

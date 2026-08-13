@@ -12,9 +12,11 @@
 
 import type { ParsedNode, Transport, TransportOpts, TlsOpts } from './subscription'
 import { XRAY_GRPC_ADDR, XRAY_SOCKS_HOST, XRAY_SOCKS_PORT, XRAY_HTTP_PORT } from './xray-constants.js'
-import { autoBalancerTags } from '../shared/node-region.js'
+import { autoBalancerTags, ruHomeTags } from '../shared/node-region.js'
+import { ruCivicXrayDomains } from '../shared/ru-civic-domains.js'
 
 const BALANCER_TAG = 'best'
+const RU_HOME_TAG = 'ru-home'
 
 // ─── streamSettings builder ─────────────────────────────────
 // Translates the normalized TransportOpts + TlsOpts into xray's
@@ -168,8 +170,9 @@ function outboundFromNode(n: ParsedNode): Record<string, unknown> {
 }
 
 // ─── TUN inbound (system-wide traffic interception) ─────────
-function tunInbound(): Record<string, unknown> {
+export function xrayTunInbound(): Record<string, unknown> {
   // xray TUN on Linux needs explicit inet4 + interface name (autoRoute alone is not enough).
+  // Sniffing is required so Gosuslugi domain rules match TUN (SNI/Host), not only SOCKS.
   return {
     tag: 'tun-in',
     protocol: 'tun',
@@ -181,6 +184,7 @@ function tunInbound(): Record<string, unknown> {
       strictRoute: true,
       stack: 'system',
     },
+    sniffing: { enabled: true, destOverride: ['http', 'tls', 'quic'] },
   }
 }
 
@@ -191,8 +195,8 @@ export interface BuildOptions {
   /** Custom DNS servers (default: cloudflare + google + localhost). */
   dnsServers?: Record<string, unknown>[]
   /**
-   * System-wide TUN (autoRoute). Default false — SOCKS-only ignition.
-   * Enable only after Linux setcap / Windows admin + wintun.dll.
+   * System-wide TUN (autoRoute). Default false in the builder (tests / SOCKS).
+   * The app enables TUN via settings; start() falls back if caps/admin missing.
    */
   enableTun?: boolean
 }
@@ -203,7 +207,26 @@ export function buildConfig(nodes: ParsedNode[], opts: BuildOptions = {}): Recor
   const tags = outbounds.map((o) => o.tag as string)
   const balancerSelector = autoBalancerTags(tags)
   const balancerFallback = balancerSelector[0] ?? tags[0] ?? 'direct'
+  const ruTags = ruHomeTags(tags)
   const enableTun = opts.enableTun === true
+  const civicDomains = ruCivicXrayDomains()
+  const balancers: Record<string, unknown>[] = [{
+    tag: BALANCER_TAG,
+    selector: balancerSelector,
+    strategy: { type: 'leastPing' },
+    fallbackTag: balancerFallback,
+  }]
+  if (ruTags.length > 0) {
+    balancers.push({
+      tag: RU_HOME_TAG,
+      selector: ruTags,
+      strategy: { type: 'leastPing' },
+      fallbackTag: 'direct',
+    })
+  }
+  const civicRule = ruTags.length > 0
+    ? { type: 'field', balancerTag: RU_HOME_TAG, domain: civicDomains }
+    : { type: 'field', outboundTag: 'direct', domain: civicDomains }
 
   return {
     log: { loglevel: 'warning' },
@@ -241,7 +264,7 @@ export function buildConfig(nodes: ParsedNode[], opts: BuildOptions = {}): Recor
       disableCache: false,
     },
     inbounds: [
-      ...(enableTun ? [tunInbound()] : []),
+      ...(enableTun ? [xrayTunInbound()] : []),
       {
         tag: 'mixed-in',
         listen: XRAY_SOCKS_HOST,
@@ -267,19 +290,16 @@ export function buildConfig(nodes: ParsedNode[], opts: BuildOptions = {}): Recor
     ],
     routing: {
       domainStrategy: 'Use_IP4',
-      balancers: [{
-        tag: BALANCER_TAG,
-        selector: balancerSelector,
-        strategy: { type: 'leastPing' },
-        fallbackTag: balancerFallback,
-      }],
+      balancers,
       rules: [
         // Private/LAN networks — direct, not via VPN (explicit CIDRs, no geoip.dat).
         { type: 'field', outboundTag: 'direct', ip: [
           '10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '100.64.0.0/10',
           '127.0.0.0/8', '169.254.0.0/16', '224.0.0.0/4', 'fc00::/7', 'fe80::/10',
         ] },
-        // Everything else — through the balancer (SOCKS and/or TUN).
+        // Gosuslugi / gov — RU node per-connection; other tabs stay on foreign AUTO.
+        civicRule,
+        // Everything else — through the foreign balancer (SOCKS and/or TUN).
         { type: 'field', balancerTag: BALANCER_TAG, network: 'tcp,udp' },
       ],
     },

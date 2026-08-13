@@ -419,3 +419,46 @@ test('xray SOCKS-only config validates with real binary', { skip: !XRAY_AVAILABL
   }
   assert.equal(threw, null, `xray -test failed:\n${threw?.stderr?.toString() ?? threw?.message}`)
 })
+
+const VLESS_RU = VLESS_REALITY.replace('#TestNode-REALITY', '#🇷🇺-РОССИЯ-MSK')
+const VLESS_DE = VLESS_REALITY
+  .replace('@example.com', '@de.example.com')
+  .replace('#TestNode-REALITY', 'Germany-DE')
+
+test('xray civic split: Gosuslugi → ru-home, AUTO stays foreign', () => {
+  const parsed = parseSubscription([VLESS_DE, VLESS_RU].join('\n'))
+  assert.equal(parsed.nodes.length, 2)
+  const cfg = buildConfig(parsed.nodes)
+  const balancers = cfg.routing.balancers
+  const best = balancers.find((b) => b.tag === 'best')
+  const ruHome = balancers.find((b) => b.tag === 'ru-home')
+  assert.ok(best, 'foreign balancer present')
+  assert.ok(ruHome, 'ru-home balancer present')
+  assert.ok(best.selector.every((t) => !/РОССИЯ|🇷🇺/.test(t)), 'AUTO excludes RU')
+  assert.ok(ruHome.selector.some((t) => /РОССИЯ|🇷🇺/.test(t)), 'ru-home is domestic')
+  const civic = cfg.routing.rules.find((r) => r.balancerTag === 'ru-home')
+  assert.ok(civic, 'civic rule uses ru-home')
+  assert.ok((civic.domain || []).some((d) => d.includes('gosuslugi.ru')), 'gosuslugi in civic domains')
+  const catchAll = cfg.routing.rules.find((r) => r.balancerTag === 'best' && r.network)
+  assert.ok(catchAll, 'catch-all stays on foreign best')
+})
+
+test('xray civic split without RU nodes goes direct', () => {
+  const parsed = parseSubscription(VLESS_REALITY)
+  const cfg = buildConfig(parsed.nodes)
+  assert.ok(!cfg.routing.balancers.some((b) => b.tag === 'ru-home'))
+  const civic = cfg.routing.rules.find((r) => Array.isArray(r.domain) && r.domain.some((d) => d.includes('gosuslugi.ru')))
+  assert.equal(civic.outboundTag, 'direct')
+})
+
+test('sing-box civic split: Gosuslugi → ru-home urltest', () => {
+  const parsed = parseSubscription([VLESS_DE, VLESS_RU].join('\n'))
+  const cfg = buildSingboxConfig(parsed.nodes)
+  const ruHome = cfg.outbounds.find((o) => o.tag === 'ru-home')
+  assert.ok(ruHome, 'ru-home urltest')
+  assert.equal(ruHome.type, 'urltest')
+  const auto = cfg.outbounds.find((o) => o.tag === 'auto')
+  assert.ok(auto.outbounds.every((t) => !/РОССИЯ|🇷🇺/.test(t)), 'sing-box AUTO excludes RU')
+  const civic = cfg.route.rules.find((r) => Array.isArray(r.domain_suffix) && r.domain_suffix.includes('gosuslugi.ru'))
+  assert.equal(civic.outbound, 'ru-home')
+})

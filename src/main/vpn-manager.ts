@@ -20,8 +20,8 @@ import {
   isWhitelistStubError,
   whitelistStubError,
 } from './subscription'
-import { buildConfig } from './config-builder'
-import { buildSingboxConfig, SINGBOX_CLASH_API } from './singbox-config-builder'
+import { buildConfig, xrayTunInbound } from './config-builder'
+import { buildSingboxConfig, SINGBOX_CLASH_API, SINGBOX_MIXED_PORT, singboxTunInbound } from './singbox-config-builder'
 import { SingboxRunner } from './singbox-runner'
 import * as grpc from './grpc-client'
 import * as runner from './xray-runner'
@@ -29,7 +29,7 @@ import { checkCaps, grantCapsLinux, platformNeedsCaps } from './capabilities'
 import { loadSettings, updateSettings, getSubscriptionUrl, setSubscriptionUrl, Settings, SubscriptionQuota, CoreEngine } from './storage'
 import { sortNodesForRoster } from '../shared/node-region.js'
 import { applySystemProxy, clearSystemProxy } from './system-proxy'
-import { XRAY_HTTP_PORT, XRAY_SOCKS_HOST } from './xray-constants'
+import { XRAY_HTTP_PORT, XRAY_SOCKS_HOST, XRAY_SOCKS_PORT } from './xray-constants'
 
 // sing-box runner instance (lazy — only used when active core is singbox).
 let _singbox: SingboxRunner | null = null
@@ -429,8 +429,8 @@ export class VpnManager {
     const core = s.core
     const scenario = s.scenario
     const enableTun = s.enableTun === true
-    // Windows without TUN: HAPP-style system proxy (browsers use HTTP inbound).
-    const setSystemProxy = process.platform === 'win32' && !enableTun
+    // Without TUN: HAPP-style system proxy (browsers). Linux GNOME + Windows WinINET.
+    const setSystemProxy = !enableTun
     if (core === 'singbox') {
       const sbConfig = buildSingboxConfig(nodes, {
         filter: opts?.filter,
@@ -474,10 +474,14 @@ export class VpnManager {
     }
   }
 
-  /** After xray start on Windows: WinINET → http-in (like HAPP without TUN). */
+  /** After start without TUN: OS user proxy → HTTP inbound (browsers, no admin). */
   private applyTrafficCapture(enableTun: boolean): void {
-    if (process.platform === 'win32' && !enableTun) {
-      applySystemProxy(XRAY_SOCKS_HOST, XRAY_HTTP_PORT)
+    if (enableTun) return
+    const core = loadSettings().core
+    if (core === 'singbox') {
+      applySystemProxy(XRAY_SOCKS_HOST, SINGBOX_MIXED_PORT, SINGBOX_MIXED_PORT)
+    } else {
+      applySystemProxy(XRAY_SOCKS_HOST, XRAY_HTTP_PORT, XRAY_SOCKS_PORT)
     }
   }
 
@@ -501,6 +505,73 @@ export class VpnManager {
     } catch {
       return false
     }
+  }
+
+  private stripTunFromSingboxConfig(): boolean {
+    const p = singbox().configPath()
+    if (!existsSync(p)) return false
+    try {
+      const cfg = JSON.parse(readFileSync(p, 'utf-8')) as {
+        inbounds?: Array<{ tag?: string }>
+      }
+      const before = cfg.inbounds?.length ?? 0
+      cfg.inbounds = (cfg.inbounds ?? []).filter((i) => i.tag !== 'tun-in')
+      if ((cfg.inbounds?.length ?? 0) === before) return false
+      writeFileSync(p, JSON.stringify(cfg, null, 2))
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  /** Inject or remove TUN inbound so grant-caps after a SOCKS fallback still works. */
+  private syncTunInbound(wantTun: boolean, kind: CoreEngine): void {
+    if (kind === 'xray') {
+      if (!wantTun) {
+        this.stripTunFromXrayConfig()
+        return
+      }
+      const p = runner.configPath()
+      if (!existsSync(p)) return
+      try {
+        const cfg = JSON.parse(readFileSync(p, 'utf-8')) as {
+          inbounds?: Array<Record<string, unknown>>
+        }
+        const inbounds = cfg.inbounds ?? []
+        if (inbounds.some((i) => i.tag === 'tun-in')) return
+        inbounds.unshift(xrayTunInbound())
+        cfg.inbounds = inbounds
+        writeFileSync(p, JSON.stringify(cfg, null, 2))
+      } catch {
+        /* next import rebuilds */
+      }
+      return
+    }
+    if (!wantTun) {
+      this.stripTunFromSingboxConfig()
+      return
+    }
+    const p = singbox().configPath()
+    if (!existsSync(p)) return
+    try {
+      const cfg = JSON.parse(readFileSync(p, 'utf-8')) as {
+        inbounds?: Array<Record<string, unknown>>
+      }
+      const inbounds = cfg.inbounds ?? []
+      if (inbounds.some((i) => i.tag === 'tun-in')) return
+      inbounds.unshift(singboxTunInbound())
+      cfg.inbounds = inbounds
+      writeFileSync(p, JSON.stringify(cfg, null, 2))
+    } catch {
+      /* next import rebuilds */
+    }
+  }
+
+  /** TUN only when requested AND Linux/macOS already has caps (Windows: try, then fallback). */
+  private effectiveTun(s: Settings, binaryPath: string): boolean {
+    if (!s.enableTun) return false
+    if (!platformNeedsCaps()) return true
+    return !checkCaps(binaryPath).needsElevation
   }
 
   // ─── Update subscription (download → parse → build config) ─
@@ -708,25 +779,20 @@ export class VpnManager {
       }
       return ok
     }
-    // macOS/Windows: no setcap flow; mark granted (see capabilities.ts notes).
-    // Keep enableTun false — SOCKS ignition works without admin; TUN needs elevation.
-    updateSettings({ capsGranted: true })
+    // macOS/Windows: no setcap flow. Mark granted and try TUN on next start
+    // (Windows needs Run as administrator + wintun; start() falls back to OS proxy).
+    updateSettings({ capsGranted: true, enableTun: true })
     return true
   }
 
-  // ─── Start VPN (SOCKS + system proxy on Windows; TUN optional) ──
+  // ─── Start VPN (TUN when possible; else SOCKS + OS proxy — no admin needed) ──
   async start(): Promise<void> {
     const s = loadSettings()
     const r = activeRunner()
     r.kind === 'xray' ? runner.ensureXrayExtracted() : singbox().ensureExtracted()
     if (r.kind === 'xray') this.ensureXrayHttpInbound()
-    // Caps only required when TUN mode is enabled.
-    if (s.enableTun && platformNeedsCaps()) {
-      const capState = checkCaps(r.path())
-      if (capState.needsElevation && !s.capsGranted) {
-        throw new Error('TUN capabilities not granted. Call grantCapabilities() first.')
-      }
-    }
+    const tun = this.effectiveTun(s, r.path())
+    this.syncTunInbound(tun, r.kind)
     const runCore = async (): Promise<void> => {
       if (r.kind === 'xray') await runner.start()
       else await singbox().start()
@@ -735,9 +801,11 @@ export class VpnManager {
       await runCore()
     } catch (e) {
       const msg = (e as Error).message || ''
-      // Auto-fallback: old configs always had TUN; Windows without admin exits immediately.
-      if (r.kind === 'xray' && /did not stay running/i.test(msg)) {
-        const stripped = this.stripTunFromXrayConfig()
+      // Auto-fallback: TUN without admin/wintun/setcap exits immediately.
+      if (/did not stay running/i.test(msg)) {
+        const stripped = r.kind === 'xray'
+          ? this.stripTunFromXrayConfig()
+          : this.stripTunFromSingboxConfig()
         if (stripped || s.enableTun) {
           updateSettings({ enableTun: false })
           await runCore()
@@ -747,7 +815,7 @@ export class VpnManager {
       }
       throw e
     }
-    this.applyTrafficCapture(s.enableTun === true)
+    this.applyTrafficCapture(tun)
   }
 
   async stop(): Promise<void> {
