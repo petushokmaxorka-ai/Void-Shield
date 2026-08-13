@@ -199,18 +199,68 @@ function curlOnce(url: string, userAgent: string, direct: boolean): Promise<{ bo
   })
 }
 
-// ─── FlClashX local profile cache (same source the dashboard uses) ──
-function flclashProfilesDir(): string {
-  return join(homedir(), '.local', 'share', 'FlClashX', 'profiles')
+// ─── FlClashX / local Clash YAML cache (same source the dashboard uses) ──
+function flclashProfilesDirs(): string[] {
+  const home = homedir()
+  const dirs = [
+    join(home, '.local', 'share', 'FlClashX', 'profiles'),
+    join(home, '.local', 'share', 'FlClash', 'profiles'),
+  ]
+  if (process.platform === 'win32') {
+    const local = process.env.LOCALAPPDATA || join(home, 'AppData', 'Local')
+    const roaming = process.env.APPDATA || join(home, 'AppData', 'Roaming')
+    dirs.push(
+      join(local, 'FlClashX', 'profiles'),
+      join(local, 'FlClash', 'profiles'),
+      join(roaming, 'FlClashX', 'profiles'),
+      join(roaming, 'FlClash', 'profiles'),
+      join(local, 'com.follow', 'FlClash', 'profiles'),
+    )
+  }
+  return dirs
 }
 
-function flclashPrefsPath(): string {
-  return join(homedir(), '.local', 'share', 'FlClashX', 'shared_preferences.json')
+function flclashPrefsCandidates(): string[] {
+  const home = homedir()
+  const paths = [
+    join(home, '.local', 'share', 'FlClashX', 'shared_preferences.json'),
+    join(home, '.local', 'share', 'FlClash', 'shared_preferences.json'),
+  ]
+  if (process.platform === 'win32') {
+    const local = process.env.LOCALAPPDATA || join(home, 'AppData', 'Local')
+    const roaming = process.env.APPDATA || join(home, 'AppData', 'Roaming')
+    paths.push(
+      join(local, 'FlClashX', 'shared_preferences.json'),
+      join(local, 'FlClash', 'shared_preferences.json'),
+      join(roaming, 'FlClashX', 'shared_preferences.json'),
+      join(roaming, 'FlClash', 'shared_preferences.json'),
+    )
+  }
+  return paths
 }
 
-/** Latest Clash YAML under FlClashX profiles/ by mtime, or null. */
-export function latestFlClashProfilePath(): string | null {
-  const dir = flclashProfilesDir()
+/** User-dropped Clash YAML for Import File / stub fallback (esp. Windows). */
+function userImportYamlCandidates(): string[] {
+  const home = homedir()
+  const names = ['void-shield-nodes.yaml', 'void-shield-118-nodes.yaml', 'import-clash.yaml']
+  const roots = [
+    join(home, 'Documents'),
+    join(home, 'Desktop'),
+    join(home, '.config', 'void-shield'),
+    join(home, '.config', 'void-shield-desktop'),
+  ]
+  if (process.platform === 'win32') {
+    const userProfile = process.env.USERPROFILE || home
+    roots.push(join(userProfile, 'Documents'), join(userProfile, 'Desktop'))
+  }
+  const out: string[] = []
+  for (const root of roots) {
+    for (const name of names) out.push(join(root, name))
+  }
+  return out
+}
+
+function latestYamlInDir(dir: string): string | null {
   if (!existsSync(dir)) return null
   const yamls = readdirSync(dir)
     .filter((f) => /\.ya?ml$/i.test(f))
@@ -222,28 +272,56 @@ export function latestFlClashProfilePath(): string | null {
   return yamls[0]
 }
 
-/** Find FlClashX YAML whose profile.url matches (normalized) the given URL. */
+/** Latest Clash YAML under FlClashX/FlClash profiles/ by mtime, or null. */
+export function latestFlClashProfilePath(): string | null {
+  let best: string | null = null
+  let bestM = 0
+  for (const dir of flclashProfilesDirs()) {
+    const p = latestYamlInDir(dir)
+    if (!p) continue
+    try {
+      const m = statSync(p).mtimeMs
+      if (m >= bestM) { best = p; bestM = m }
+    } catch { /* skip */ }
+  }
+  return best
+}
+
+/** Find FlClash YAML whose profile.url matches (normalized) the given URL. */
 export function findFlClashProfileForUrl(url: string): string | null {
   const want = url.trim().replace(/\/+$/, '')
   if (!want) return null
-  try {
-    const raw = readFileSync(flclashPrefsPath(), 'utf-8')
-    const data = JSON.parse(raw) as Record<string, unknown>
-    let fc: Record<string, unknown> | null = null
-    const flutterConfig = data['flutter.config']
-    if (typeof flutterConfig === 'string') fc = JSON.parse(flutterConfig) as Record<string, unknown>
-    else if (flutterConfig && typeof flutterConfig === 'object') fc = flutterConfig as Record<string, unknown>
-    const profiles = (fc?.profiles as Array<{ id?: string; url?: string }>) || []
-    for (const p of profiles) {
-      const pu = (p.url || '').trim().replace(/\/+$/, '')
-      if (pu && pu === want && p.id) {
-        for (const ext of ['.yaml', '.yml']) {
-          const path = join(flclashProfilesDir(), `${p.id}${ext}`)
-          if (existsSync(path)) return path
+  for (const prefs of flclashPrefsCandidates()) {
+    if (!existsSync(prefs)) continue
+    try {
+      const raw = readFileSync(prefs, 'utf-8')
+      const data = JSON.parse(raw) as Record<string, unknown>
+      let fc: Record<string, unknown> | null = null
+      const flutterConfig = data['flutter.config']
+      if (typeof flutterConfig === 'string') fc = JSON.parse(flutterConfig) as Record<string, unknown>
+      else if (flutterConfig && typeof flutterConfig === 'object') fc = flutterConfig as Record<string, unknown>
+      const profiles = (fc?.profiles as Array<{ id?: string; url?: string }>) || []
+      for (const p of profiles) {
+        const pu = (p.url || '').trim().replace(/\/+$/, '')
+        if (pu && pu === want && p.id) {
+          for (const dir of flclashProfilesDirs()) {
+            for (const ext of ['.yaml', '.yml']) {
+              const path = join(dir, `${p.id}${ext}`)
+              if (existsSync(path)) return path
+            }
+          }
         }
       }
-    }
-  } catch { /* prefs missing / corrupt */ }
+    } catch { /* prefs missing / corrupt */ }
+  }
+  return null
+}
+
+/** Documents/Desktop void-shield-nodes.yaml (Windows Import File workflow). */
+export function findUserImportYaml(): string | null {
+  for (const p of userImportYamlCandidates()) {
+    if (existsSync(p)) return p
+  }
   return null
 }
 
@@ -386,14 +464,17 @@ export class VpnManager {
       }
     }
 
-    // Dashboard-compatible fallback: FlClashX cached Clash YAML for this URL.
+    // Dashboard-compatible fallback: FlClash cache, then Documents/Desktop YAML (Windows).
     const matched = findFlClashProfileForUrl(url)
-    const flPath = matched || (fetchError && isWhitelistStubError(fetchError.message) ? latestFlClashProfilePath() : null)
-    if (flPath) {
-      const local = parseSubscription(readFileSync(flPath, 'utf-8'))
+    const stub = !!(fetchError && isWhitelistStubError(fetchError.message))
+    const flPath = matched || (stub ? latestFlClashProfilePath() : null)
+    const localPath = flPath || (stub ? findUserImportYaml() : null)
+    if (localPath) {
+      const local = parseSubscription(readFileSync(localPath, 'utf-8'))
       if (local.nodes.length) {
         this.applyNodes(local.nodes, { filter: opts?.filter, subscriptionUrl: url })
-        return { nodes: local.nodes.length, format: local.format, source: 'flclash-cache' }
+        const source = flPath ? 'flclash-cache' : 'local-yaml'
+        return { nodes: local.nodes.length, format: local.format, source }
       }
     }
 
@@ -406,7 +487,12 @@ export class VpnManager {
       (preferredUrl ? findFlClashProfileForUrl(preferredUrl) : null) ||
       latestFlClashProfilePath()
     if (!path) {
-      return { ok: false, error: 'No FlClashX profiles found in ~/.local/share/FlClashX/profiles' }
+      return {
+        ok: false,
+        error: process.platform === 'win32'
+          ? 'No FlClash profiles found. On Windows use IMPORT FILE with Documents\\void-shield-nodes.yaml'
+          : 'No FlClashX profiles found in ~/.local/share/FlClashX/profiles',
+      }
     }
     try {
       const text = readFileSync(path, 'utf-8')
@@ -419,15 +505,18 @@ export class VpnManager {
       if (!url) {
         try {
           const id = path.replace(/\.(ya?ml)$/i, '').split(/[/\\]/).pop() || ''
-          const raw = readFileSync(flclashPrefsPath(), 'utf-8')
-          const data = JSON.parse(raw) as Record<string, unknown>
-          let fc: Record<string, unknown> | null = null
-          const flutterConfig = data['flutter.config']
-          if (typeof flutterConfig === 'string') fc = JSON.parse(flutterConfig) as Record<string, unknown>
-          else if (flutterConfig && typeof flutterConfig === 'object') fc = flutterConfig as Record<string, unknown>
-          const profiles = (fc?.profiles as Array<{ id?: string; url?: string }>) || []
-          const hit = profiles.find((p) => p.id === id)
-          if (hit?.url) url = hit.url
+          for (const prefs of flclashPrefsCandidates()) {
+            if (!existsSync(prefs)) continue
+            const raw = readFileSync(prefs, 'utf-8')
+            const data = JSON.parse(raw) as Record<string, unknown>
+            let fc: Record<string, unknown> | null = null
+            const flutterConfig = data['flutter.config']
+            if (typeof flutterConfig === 'string') fc = JSON.parse(flutterConfig) as Record<string, unknown>
+            else if (flutterConfig && typeof flutterConfig === 'object') fc = flutterConfig as Record<string, unknown>
+            const profiles = (fc?.profiles as Array<{ id?: string; url?: string }>) || []
+            const hit = profiles.find((p) => p.id === id)
+            if (hit?.url) { url = hit.url; break }
+          }
         } catch { /* ignore */ }
       }
       this.applyNodes(result.nodes, { subscriptionUrl: url })

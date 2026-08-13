@@ -104,7 +104,8 @@ async function registerSubscription(): Promise<void> {
       }
       result = { nodes: r.nodes, format: r.format ?? 'unknown' }
     }
-    const srcNote = result.source === 'flclash-cache' ? ' [FLCLASHX CACHE]' : ''
+    const srcNote = result.source === 'flclash-cache' ? ' [FLCLASHX CACHE]'
+      : result.source === 'local-yaml' ? ' [LOCAL YAML]' : ''
     setOnboardingStatus(`◆ CONTRACT PARSED: ${result.nodes} NODES (${result.format})${srcNote}`, 'ok')
 
     // Grant capabilities if needed (Linux TUN).

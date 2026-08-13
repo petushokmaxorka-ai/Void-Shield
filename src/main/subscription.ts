@@ -137,10 +137,14 @@ export function isClientWhitelistStub(text: string): boolean {
 }
 
 export function whitelistStubError(dropped: number): string {
+  const winHint =
+    process.platform === 'win32'
+      ? `On Windows: click IMPORT FILE and select Documents\\void-shield-nodes.yaml (or any Clash YAML exported from HAPP/FlClash). Paste-URL cannot work while the panel only serves whitelist apps.`
+      : `Use Import FlClashX, Import File (Clash YAML), or set a Custom User-Agent if the panel allows another client.`
   return (
     `Provider returned a client-whitelist stub (${dropped} fake node(s), e.g. "Install HAPP" / 0.0.0.0:1). ` +
     `This panel only serves approved apps over the subscription URL. ` +
-    `Use Import FlClashX, Import File, or set a Custom User-Agent if the panel allows another client.`
+    winHint
   )
 }
 
