@@ -24,13 +24,22 @@ DEST_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/resources/bin"
 mkdir -p "${DEST_DIR}"
 
 PROXY="${https_proxy:-${HTTPS_PROXY:-}}"
-CURL_OPTS=(-4 -sS --max-time 90 -L)
+CURL_OPTS=(-sS --max-time 90 -L --retry 3 --retry-delay 2)
 if [ -n "${PROXY}" ]; then CURL_OPTS+=(-x "${PROXY}"); fi
-
+API_HEADERS=()
+if [ -n "${GITHUB_TOKEN:-${GH_TOKEN:-}}" ]; then
+  API_HEADERS=(-H "Authorization: Bearer ${GITHUB_TOKEN:-${GH_TOKEN}}" -H "Accept: application/vnd.github+json")
+fi
+FALLBACK_VERSION="v26.3.27"
 if [ -z "${VERSION}" ]; then
   echo "Fetching latest xray-core release..." >&2
   API="https://api.github.com/repos/XTLS/Xray-core/releases/latest"
-  VERSION=$(curl "${CURL_OPTS[@]}" "${API}" | grep '"tag_name"' | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
+  raw="$(curl "${CURL_OPTS[@]}" "${API_HEADERS[@]}" "${API}" 2>/dev/null || true)"
+  VERSION="$(printf '%s' "${raw}" | grep '"tag_name"' | head -1 | sed -E 's/.*"([^"]+)".*/\1/' || true)"
+  if [ -z "${VERSION}" ]; then
+    echo "API did not return tag_name — using ${FALLBACK_VERSION}" >&2
+    VERSION="${FALLBACK_VERSION}"
+  fi
 fi
 echo "xray-core version: ${VERSION}" >&2
 

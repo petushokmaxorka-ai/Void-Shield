@@ -33,10 +33,20 @@ PROXY="${https_proxy:-${HTTPS_PROXY:-}}"
 CURL_OPTS=(-4 -sS --max-time 120 -L --retry 3 --retry-delay 2)
 if [ -n "${PROXY}" ]; then CURL_OPTS+=(-x "${PROXY}"); fi
 
+API_HEADERS=()
+if [ -n "${GITHUB_TOKEN:-${GH_TOKEN:-}}" ]; then
+  API_HEADERS=(-H "Authorization: Bearer ${GITHUB_TOKEN:-${GH_TOKEN}}" -H "Accept: application/vnd.github+json")
+fi
+FALLBACK_VERSION="v1.12.12"
 if [ -z "${VERSION}" ]; then
   echo "Fetching latest sing-box release..." >&2
   API="https://api.github.com/repos/SagerNet/sing-box/releases/latest"
-  VERSION=$(curl "${CURL_OPTS[@]}" "${API}" | grep '"tag_name"' | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
+  raw="$(curl "${CURL_OPTS[@]}" "${API_HEADERS[@]}" "${API}" 2>/dev/null || true)"
+  VERSION="$(printf '%s' "${raw}" | grep '"tag_name"' | head -1 | sed -E 's/.*"([^"]+)".*/\1/' || true)"
+  if [ -z "${VERSION}" ]; then
+    echo "API did not return tag_name — using ${FALLBACK_VERSION}" >&2
+    VERSION="${FALLBACK_VERSION}"
+  fi
 fi
 echo "sing-box version: ${VERSION}" >&2
 
