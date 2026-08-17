@@ -33,22 +33,48 @@ PROXY="${https_proxy:-${HTTPS_PROXY:-}}"
 CURL_OPTS=(-sS --max-time 180 -L --retry 5 --retry-all-errors --retry-delay 3)
 if [ -n "${PROXY}" ]; then CURL_OPTS+=(-x "${PROXY}"); fi
 
-API_HEADERS=()
-if [ -n "${GITHUB_TOKEN:-${GH_TOKEN:-}}" ]; then
-  API_HEADERS=(-H "Authorization: Bearer ${GITHUB_TOKEN:-${GH_TOKEN}}" -H "Accept: application/vnd.github+json")
-fi
-FALLBACK_VERSION="v1.12.12"
+# ─── Pinned release + sha256 digests (supply-chain hardening) ───
+# Reproducible builds: default version is PINNED, not /latest.
+# Bump: set new tag + refresh digests from the GitHub API —
+#   curl -s https://api.github.com/repos/SagerNet/sing-box/releases/tags/<tag> \
+#     | jq -r '.assets[] | "\(.name) \(.digest)"'
+PINNED_VERSION="v1.13.19"
 if [ -z "${VERSION}" ]; then
-  echo "Fetching latest sing-box release..." >&2
-  API="https://api.github.com/repos/SagerNet/sing-box/releases/latest"
-  raw="$(curl "${CURL_OPTS[@]}" "${API_HEADERS[@]}" "${API}" 2>/dev/null || true)"
-  VERSION="$(printf '%s' "${raw}" | grep '"tag_name"' | head -1 | sed -E 's/.*"([^"]+)".*/\1/' || true)"
-  if [ -z "${VERSION}" ]; then
-    echo "API did not return tag_name — using ${FALLBACK_VERSION}" >&2
-    VERSION="${FALLBACK_VERSION}"
-  fi
+  VERSION="${PINNED_VERSION}"
 fi
 echo "sing-box version: ${VERSION}" >&2
+
+# sha256 digests of release assets for ${PINNED_VERSION} (GitHub API asset.digest).
+declare -A SHA256=(
+  [sing-box-1.13.19-linux-amd64.tar.gz]="ef88a9e577d474210867bd708933d042e9b70106529df2656182c9db90106aa1"
+  [sing-box-1.13.19-windows-amd64.zip]="e011a4def2f5e2b143ed54adb2b1a20a6be407806ab4442f3667f1dd817a2c8d"
+  [sing-box-1.13.19-darwin-amd64.tar.gz]="31ee722237d95774e101fbffeae6be6776249c5f7db229ad8ff00b45b22e6a00"
+  [sing-box-1.13.19-darwin-arm64.tar.gz]="23bf191906f2dfc9f00e9f0092f274f3426ba9377327e903ff94e636b64d0997"
+)
+
+# Verify a downloaded archive against its expected sha256.
+# Empty expected (custom version without a digest entry) → skip with a warning.
+verify_sha256() {
+  local file="$1" expected="$2"
+  if [ -z "${expected}" ]; then
+    echo "  warn: no pinned digest for this version — checksum skipped" >&2
+    return 0
+  fi
+  local actual=""
+  if command -v sha256sum >/dev/null 2>&1; then
+    actual="$(sha256sum "${file}" | awk '{print $1}')"
+  elif command -v shasum >/dev/null 2>&1; then
+    actual="$(shasum -a 256 "${file}" | awk '{print $1}')"
+  else
+    echo "  warn: sha256 tool not found — checksum skipped" >&2
+    return 0
+  fi
+  if [ "${actual}" != "${expected}" ]; then
+    echo "  CHECKSUM MISMATCH: expected ${expected}, got ${actual}" >&2
+    return 1
+  fi
+  echo "  checksum ok" >&2
+}
 
 # Strip leading 'v' for asset-name composition (assets use bare version).
 VER_NUM="${VERSION#v}"
@@ -115,6 +141,15 @@ fetch_one() {
   echo "  ${target}: downloading ${asset}..." >&2
   if ! curl "${CURL_OPTS[@]}" "${url}" -o "/tmp/singbox-${target}.${ext}"; then
     echo "  ${target}: FAILED to download ${url}" >&2
+    return 1
+  fi
+
+  # Supply-chain gate: reject tampered/corrupted archives BEFORE extraction.
+  local expected=""
+  if [ "${VERSION}" = "${PINNED_VERSION}" ]; then expected="${SHA256[${asset}]:-}"; fi
+  if ! verify_sha256 "/tmp/singbox-${target}.${ext}" "${expected}"; then
+    echo "  ${target}: REJECTED — archive digest mismatch" >&2
+    rm -f "/tmp/singbox-${target}.${ext}"
     return 1
   fi
 

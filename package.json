@@ -1,6 +1,6 @@
 {
   "name": "void-shield",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "VOID-SHIELD \u2014 Heretic Dark Mechanicus VPN (paste URL, Linux + Windows)",
   "main": "./out/main/index.js",
   "author": {
@@ -31,13 +31,14 @@
     "@electron-toolkit/utils": "^3.0.0",
     "@grpc/grpc-js": "^1.12.0",
     "@grpc/proto-loader": "^0.7.13",
+    "electron-updater": "^6.6.2",
     "js-yaml": "^4.3.1"
   },
   "devDependencies": {
     "@electron-toolkit/tsconfig": "^1.0.1",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^20.14.8",
-    "electron": "^28.0.0",
+    "electron": "^43.4.0",
     "electron-builder": "^24.9.1",
     "electron-vite": "^2.3.0",
     "typescript": "^5.5.2",
@@ -47,6 +48,13 @@
     "productName": "VoidShield",
     "appId": "dev.heretic-os.void-shield",
     "asar": false,
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "petushokmaxorka-ai",
+        "repo": "Void-Shield"
+      }
+    ],
     "directories": {
       "output": "release"
     },

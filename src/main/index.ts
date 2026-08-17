@@ -9,6 +9,7 @@ import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { IPC_CHANNELS } from '../shared/types'
 import { VpnManager } from './vpn-manager'
+import { initUpdater } from './updater'
 
 const vpn = new VpnManager()
 let tray: Tray | null = null
@@ -202,6 +203,8 @@ app.whenReady().then(() => {
   // Real-time log bridge: subscribe to sing-box clash-api /logs WebSocket and
   // push lines to the renderer via IPC (sandbox can't reach WS directly).
   startLogBridge()
+  // Auto-update (v1.2.0): GitHub Releases feed, startup + 6h cycle.
+  initUpdater(broadcastLog)
   // Auto-update subscription on a schedule (Point 4). Only fires if the user
   // has a URL-backed subscription (not file-imported, where URL == '').
   startSubscriptionAutoUpdate()

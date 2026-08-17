@@ -26,22 +26,48 @@ mkdir -p "${DEST_DIR}"
 PROXY="${https_proxy:-${HTTPS_PROXY:-}}"
 CURL_OPTS=(-sS --max-time 90 -L --retry 3 --retry-delay 2)
 if [ -n "${PROXY}" ]; then CURL_OPTS+=(-x "${PROXY}"); fi
-API_HEADERS=()
-if [ -n "${GITHUB_TOKEN:-${GH_TOKEN:-}}" ]; then
-  API_HEADERS=(-H "Authorization: Bearer ${GITHUB_TOKEN:-${GH_TOKEN}}" -H "Accept: application/vnd.github+json")
-fi
-FALLBACK_VERSION="v26.3.27"
+# ─── Pinned release + sha256 digests (supply-chain hardening) ───
+# Reproducible builds: default version is PINNED, not /latest.
+# Bump: set new tag + refresh digests from the GitHub API —
+#   curl -s https://api.github.com/repos/XTLS/Xray-core/releases/tags/<tag> \
+#     | jq -r '.assets[] | "\(.name) \(.digest)"'
+PINNED_VERSION="v26.3.27"
 if [ -z "${VERSION}" ]; then
-  echo "Fetching latest xray-core release..." >&2
-  API="https://api.github.com/repos/XTLS/Xray-core/releases/latest"
-  raw="$(curl "${CURL_OPTS[@]}" "${API_HEADERS[@]}" "${API}" 2>/dev/null || true)"
-  VERSION="$(printf '%s' "${raw}" | grep '"tag_name"' | head -1 | sed -E 's/.*"([^"]+)".*/\1/' || true)"
-  if [ -z "${VERSION}" ]; then
-    echo "API did not return tag_name — using ${FALLBACK_VERSION}" >&2
-    VERSION="${FALLBACK_VERSION}"
-  fi
+  VERSION="${PINNED_VERSION}"
 fi
 echo "xray-core version: ${VERSION}" >&2
+
+# sha256 digests of release assets for ${PINNED_VERSION} (GitHub API asset.digest).
+declare -A SHA256=(
+  [Xray-linux-64.zip]="23cd9af937744d97776ee35ecad4972cf4b2109d1e0fe6be9930467608f7c8ae"
+  [Xray-windows-64.zip]="d004c39288ce9ada487c6f398c7c545f7d749e44bdfdd59dbc9f865afba4e1ad"
+  [Xray-macos-64.zip]="f5b0471d3459eff1b82e48af0aeac186abcc3298210070afbbbd8437a4e8b203"
+  [Xray-macos-arm64-v8a.zip]="2e93a67e8aa1936ecefb307e120830fcbd4c643ab9b1c46a2d0838d5f8409eaf"
+)
+
+# Verify a downloaded archive against its expected sha256.
+# Empty expected (custom version without a digest entry) → skip with a warning.
+verify_sha256() {
+  local file="$1" expected="$2"
+  if [ -z "${expected}" ]; then
+    echo "  warn: no pinned digest for this version — checksum skipped" >&2
+    return 0
+  fi
+  local actual=""
+  if command -v sha256sum >/dev/null 2>&1; then
+    actual="$(sha256sum "${file}" | awk '{print $1}')"
+  elif command -v shasum >/dev/null 2>&1; then
+    actual="$(shasum -a 256 "${file}" | awk '{print $1}')"
+  else
+    echo "  warn: sha256 tool not found — checksum skipped" >&2
+    return 0
+  fi
+  if [ "${actual}" != "${expected}" ]; then
+    echo "  CHECKSUM MISMATCH: expected ${expected}, got ${actual}" >&2
+    return 1
+  fi
+  echo "  checksum ok" >&2
+}
 
 # Map: target-dir -> xray asset name
 # (Xray-core asset naming convention — ARM variants use the -v8a suffix)
@@ -83,6 +109,15 @@ fetch_one() {
   echo "  ${target}: downloading ${asset}..." >&2
   if ! curl "${CURL_OPTS[@]}" "${url}" -o "${tmp}/xray.zip"; then
     echo "  ${target}: FAILED to download ${url}" >&2
+    rm -rf "${tmp}"
+    return 1
+  fi
+
+  # Supply-chain gate: reject tampered/corrupted archives BEFORE extraction.
+  local expected=""
+  if [ "${VERSION}" = "${PINNED_VERSION}" ]; then expected="${SHA256[${asset}]:-}"; fi
+  if ! verify_sha256 "${tmp}/xray.zip" "${expected}"; then
+    echo "  ${target}: REJECTED — archive digest mismatch" >&2
     rm -rf "${tmp}"
     return 1
   fi

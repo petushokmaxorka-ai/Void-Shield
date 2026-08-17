@@ -36,6 +36,8 @@ const electronAPI = {
     importFromFlClash: (preferredUrl?: string) => ipcRenderer.invoke(IPC_CHANNELS.VPN_IMPORT_FLCLASH, preferredUrl),
     setCustomUserAgent: (ua: string) => ipcRenderer.invoke(IPC_CHANNELS.VPN_SET_CUSTOM_UA, ua),
     checkClipboardForLink: () => ipcRenderer.invoke(IPC_CHANNELS.VPN_CHECK_CLIPBOARD),
+    // Phase 5: auto-update — restart into a downloaded release.
+    restartForUpdate: () => ipcRenderer.invoke(IPC_CHANNELS.VPN_UPDATE_RESTART),
     // Phase 4: real-time log stream (main → renderer push).
     onLogEvent: (cb: (line: string) => void) => {
       const handler = (_e: unknown, line: string): void => cb(line)

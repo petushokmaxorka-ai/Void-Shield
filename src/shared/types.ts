@@ -34,7 +34,9 @@ export const IPC_CHANNELS = {
   VPN_IMPORT_FLCLASH: 'vpn:import-flclash',
   VPN_SET_CUSTOM_UA: 'vpn:set-custom-ua',
   // Phase 4: real-time log stream (main → renderer push via clash-api WS bridge)
-  VPN_LOG_EVENT: 'vpn:log-event'
+  VPN_LOG_EVENT: 'vpn:log-event',
+  // Phase 5: auto-update (electron-updater)
+  VPN_UPDATE_RESTART: 'vpn:update-restart'
 } as const
 
 // ─── Data shapes ────────────────────────────────────────────
