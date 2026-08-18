@@ -48,6 +48,14 @@
     "productName": "VoidShield",
     "appId": "dev.heretic-os.void-shield",
     "asar": false,
+    "protocols": [
+      {
+        "name": "VOID-SHIELD",
+        "schemes": [
+          "void-shield"
+        ]
+      }
+    ],
     "publish": [
       {
         "provider": "github",
@@ -94,6 +102,12 @@
         }
       ],
       "category": "Network",
+      "desktop": {
+        "Name": "VOID-SHIELD",
+        "Comment": "Paste a subscription URL and ignite",
+        "MimeType": "x-scheme-handler/void-shield;",
+        "StartupWMClass": "void-shield"
+      },
       "maintainer": "Heretic OS <heretic@heretic-os.dev>",
       "icon": "resources/icon.png"
     },

@@ -12,10 +12,13 @@ import { join } from 'path'
 import * as grpc from '@grpc/grpc-js'
 import * as protoLoader from '@grpc/proto-loader'
 import { XRAY_GRPC_ADDR } from './xray-constants'
+import { HERETIC_VPN_GRPC, usingHereticVpn } from './heretic-vpn-attach'
 import { isDomesticRuNode } from '../shared/node-region.js'
 
 // ─── Constants ─────────────────────────────────────────────
-const XRAY_API = XRAY_GRPC_ADDR
+function grpcAddr(): string {
+  return usingHereticVpn() ? HERETIC_VPN_GRPC : XRAY_GRPC_ADDR
+}
 const BALANCER_TAG = 'best'
 
 // ─── Proto root resolution ──────────────────────────────────
@@ -56,7 +59,7 @@ let _channel: grpc.Channel | null = null
 
 function channel(): grpc.Channel {
   if (!_channel) {
-    _channel = new grpc.Channel(XRAY_API, grpc.credentials.createInsecure(), {})
+    _channel = new grpc.Channel(grpcAddr(), grpc.credentials.createInsecure(), {})
   }
   return _channel
 }
@@ -105,7 +108,7 @@ function outboundTag(row: OutboundStatus | Record<string, unknown>): string {
 
 export async function getBalancerInfo(): Promise<BalancerInfo> {
   const RoutingService = new grpcProto.xray.app.router.command.RoutingService(
-    XRAY_API,
+    grpcAddr(),
     grpc.credentials.createInsecure()
   )
   try {
@@ -144,7 +147,7 @@ export async function inferActiveNodeFromObservatory(): Promise<string> {
 
 export async function overrideBalancerTarget(target: string): Promise<void> {
   const RoutingService = new grpcProto.xray.app.router.command.RoutingService(
-    XRAY_API,
+    grpcAddr(),
     grpc.credentials.createInsecure()
   )
   await unary(
@@ -173,7 +176,7 @@ export interface ObservationResult {
 export async function getOutboundStatus(): Promise<ObservationResult> {
   const ObservatoryService =
     new grpcProto.xray.core.app.observatory.command.ObservatoryService(
-      XRAY_API,
+      grpcAddr(),
       grpc.credentials.createInsecure()
     )
   const resp: any = await unary(
@@ -219,7 +222,7 @@ export interface TrafficResult {
 
 export async function queryStats(): Promise<TrafficResult> {
   const StatsService = new grpcProto.xray.app.stats.command.StatsService(
-    XRAY_API,
+    grpcAddr(),
     grpc.credentials.createInsecure()
   )
 

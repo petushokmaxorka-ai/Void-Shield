@@ -5,7 +5,7 @@
 // and exposes a VPN control surface to the renderer via IPC.
 
 import { app, BrowserWindow, ipcMain, shell, Tray, Menu, nativeImage, type MenuItemConstructorOptions } from 'electron'
-import { join } from 'path'
+import { join, resolve } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { IPC_CHANNELS } from '../shared/types'
 import { VpnManager } from './vpn-manager'
@@ -14,6 +14,35 @@ import { initUpdater } from './updater'
 const vpn = new VpnManager()
 let tray: Tray | null = null
 let isQuitting = false
+
+function argvDeepLink(argv: string[]): string | undefined {
+  return argv.find((a) => a.startsWith('void-shield://'))
+}
+
+// Register void-shield:// before ready so KDE/GNOME/Windows pick up the handler.
+if (process.defaultApp) {
+  const appPath = process.argv[1] ? resolve(process.argv[1]) : undefined
+  if (appPath) app.setAsDefaultProtocolClient('void-shield', process.execPath, [appPath])
+} else {
+  app.setAsDefaultProtocolClient('void-shield')
+}
+
+const gotTheLock = app.requestSingleInstanceLock()
+if (!gotTheLock) {
+  app.quit()
+}
+
+app.on('second-instance', (_e, argv) => {
+  const win = BrowserWindow.getAllWindows()[0]
+  if (win) {
+    win.show()
+    win.focus()
+  } else {
+    createWindow()
+  }
+  const link = argvDeepLink(argv)
+  if (link) handleDeepLink(link)
+})
 
 // ─── System tray (Phase 3.3) ────────────────────────────────
 // Icon: build from the bundled PNG (extraResources) or a 16x16 fallback.
@@ -189,7 +218,7 @@ function createWindow(): void {
   }
 }
 
-app.whenReady().then(() => {
+if (gotTheLock) app.whenReady().then(() => {
   electronApp.setAppUserModelId('dev.heretic-os.void-shield')
   app.on('browser-window-created', (_e, window) => {
     optimizer.watchWindowShortcuts(window)
@@ -335,29 +364,12 @@ function startSubscriptionAutoUpdate(): void {
 // Registered as MimeType x-scheme-handler/void-shield in the .desktop file.
 // One-click import from a provider's website (no copy-paste needed).
 function registerDeepLinkHandler(): void {
-  // macOS/open-url event
   app.on('open-url', (e, url) => {
     e.preventDefault()
     handleDeepLink(url)
   })
-  // Linux/Windows: second-instance argv
-  const gotTheLock = app.requestSingleInstanceLock()
-  if (!gotTheLock) {
-    app.quit()
-    return
-  }
-  app.on('second-instance', (_e, argv) => {
-    // Focus existing window + handle any deep-link argv.
-    const win = BrowserWindow.getAllWindows()[0]
-    if (win) { win.show(); win.focus() }
-    for (const arg of argv) {
-      if (arg.startsWith('void-shield://')) { handleDeepLink(arg); break }
-    }
-  })
-  // Also check argv at launch (cold-start via deep link).
-  for (const arg of process.argv) {
-    if (arg.startsWith('void-shield://')) { handleDeepLink(arg); break }
-  }
+  const link = argvDeepLink(process.argv)
+  if (link) handleDeepLink(link)
 }
 
 function handleDeepLink(link: string): void {
@@ -367,14 +379,18 @@ function handleDeepLink(link: string): void {
     if (u.host !== 'import') return
     const targetUrl = u.searchParams.get('url')
     if (!targetUrl) return
-    console.log(`[void-shield] deep-link import: ${targetUrl}`)
-    // Show the window, fill the field, and let the user confirm/register.
-    const win = BrowserWindow.getAllWindows()[0]
-    if (win) {
+    console.log('[void-shield] deep-link import')
+    const send = (win: BrowserWindow): void => {
       win.show()
       win.focus()
-      // Send to renderer to pre-fill + auto-register.
       win.webContents.send('void-shield:import-url', targetUrl)
+    }
+    const win = BrowserWindow.getAllWindows()[0]
+    if (!win) return
+    if (win.webContents.isLoading()) {
+      win.webContents.once('did-finish-load', () => send(win))
+    } else {
+      send(win)
     }
   } catch (e) {
     console.error('[void-shield] deep-link parse failed:', e)

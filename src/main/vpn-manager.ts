@@ -25,6 +25,18 @@ import { buildSingboxConfig, SINGBOX_CLASH_API, SINGBOX_MIXED_PORT, singboxTunIn
 import { SingboxRunner } from './singbox-runner'
 import * as grpc from './grpc-client'
 import * as runner from './xray-runner'
+import {
+  usingHereticVpn,
+  hereticVpnActiveSync,
+  hereticVpnCtl,
+  rebuildHereticVpn,
+  waitHereticSocks,
+  probeHereticEgress,
+  hereticSocksOpen,
+  HERETIC_VPN_CONFIG,
+  HERETIC_VPN_LOG,
+  HERETIC_VPN_PROFILE,
+} from './heretic-vpn-attach'
 import { checkCaps, grantCapsLinux, platformNeedsCaps } from './capabilities'
 import { loadSettings, updateSettings, getSubscriptionUrl, setSubscriptionUrl, Settings, SubscriptionQuota, CoreEngine } from './storage'
 import { sortNodesForRoster } from '../shared/node-region.js'
@@ -56,9 +68,10 @@ const EGRESS_TTL = 30_000
 // Cached parsed nodes (from last subscription update) for fast node listing
 // without re-reading the xray config.
 function readConfigNodes(): { tag: string; server: string; port: number }[] {
-  // Read whichever config belongs to the active core.
   const core = loadSettings().core
-  const cfgPath = core === 'singbox' ? singbox().configPath() : runner.configPath()
+  const cfgPath = usingHereticVpn()
+    ? HERETIC_VPN_CONFIG
+    : (core === 'singbox' ? singbox().configPath() : runner.configPath())
   if (!existsSync(cfgPath)) return []
   try {
     const cfg = JSON.parse(readFileSync(cfgPath, 'utf-8'))
@@ -101,11 +114,15 @@ function readConfigNodes(): { tag: string; server: string; port: number }[] {
 // UA priority: Clash.Meta-family (broadest provider coverage, returns
 // modern protocols), then v2rayN/Hiddify/sing-box for those providers.
 const UA_CANDIDATES = [
+  'Happ/3.4.0',
+  'FlClashX/0.8.90',
+  'FlClashX/0.2.1',
+  'koala-clash',
   'clash.meta',
   'mihomo/1.18.0',
   'clash-verge/v2.2.0',
   'ClashforWindows/0.20.39',
-  'v2rayN/7.0.0',
+  'v2rayN/1.10.23',
   'Hiddify/2.0.5',
   'sing-box/1.10.0',
 ]
@@ -244,12 +261,13 @@ function flclashPrefsCandidates(): string[] {
 /** User-dropped Clash YAML for Import File / stub fallback (esp. Windows). */
 function userImportYamlCandidates(): string[] {
   const home = homedir()
-  const names = ['void-shield-nodes.yaml', 'void-shield-118-nodes.yaml', 'import-clash.yaml']
+  const names = ['void-shield-nodes.yaml', 'void-shield-118-nodes.yaml', 'profile.flclashx-71.yaml', 'import-clash.yaml']
   const roots = [
     join(home, 'Documents'),
     join(home, 'Desktop'),
     join(home, '.config', 'void-shield'),
     join(home, '.config', 'void-shield-desktop'),
+    join(home, '.config', 'heretic-vpn'),
   ]
   if (process.platform === 'win32') {
     const userProfile = process.env.USERPROFILE || home
@@ -324,7 +342,20 @@ export function findUserImportYaml(): string | null {
   for (const p of userImportYamlCandidates()) {
     if (existsSync(p)) return p
   }
-  return null
+  const extraDirs = [
+    join(homedir(), '.config', 'heretic-vpn'),
+    join(homedir(), '.config', 'void-shield'),
+  ]
+  let best: string | null = null
+  for (const dir of extraDirs) {
+    const latest = latestYamlInDir(dir)
+    if (!latest) continue
+    if (!best) { best = latest; continue }
+    try {
+      if (statSync(latest).size > statSync(best).size) best = latest
+    } catch { /* ignore */ }
+  }
+  return best
 }
 
 // Try UAs in order; accept first body that yields real nodes. If the cached
@@ -414,7 +445,7 @@ export class VpnManager {
       try { capsGranted = checkCaps(r.path()).granted } catch { /* core not extracted yet */ }
     }
     return {
-      hasSubscription: existsSync(r.configPath()),
+      hasSubscription: usingHereticVpn() || existsSync(r.configPath()),
       capsGranted,
       needsCaps: platformNeedsCaps(),
     }
@@ -609,6 +640,10 @@ export class VpnManager {
       const local = parseSubscription(readFileSync(localPath, 'utf-8'))
       if (local.nodes.length) {
         this.applyNodes(local.nodes, { filter: opts?.filter, subscriptionUrl: url })
+        if (usingHereticVpn()) {
+          rebuildHereticVpn(localPath)
+          if (hereticVpnActiveSync()) await hereticVpnCtl('restart')
+        }
         const source = flPath ? 'flclash-cache' : 'local-yaml'
         return { nodes: local.nodes.length, format: local.format, source }
       }
@@ -620,6 +655,7 @@ export class VpnManager {
   /** Import latest (or URL-matched) FlClashX profile — same data the dashboard rebuilds from. */
   async importFromFlClashX(preferredUrl?: string): Promise<{ ok: boolean; nodes?: number; format?: string; error?: string; path?: string; source?: string }> {
     const path =
+      (usingHereticVpn() && existsSync(HERETIC_VPN_PROFILE) ? HERETIC_VPN_PROFILE : null) ||
       (preferredUrl ? findFlClashProfileForUrl(preferredUrl) : null) ||
       latestFlClashProfilePath()
     if (!path) {
@@ -656,6 +692,10 @@ export class VpnManager {
         } catch { /* ignore */ }
       }
       this.applyNodes(result.nodes, { subscriptionUrl: url })
+      if (usingHereticVpn()) {
+        rebuildHereticVpn(path)
+        if (hereticVpnActiveSync()) await hereticVpnCtl('restart')
+      }
       return { ok: true, nodes: result.nodes.length, format: result.format, path, source: 'flclash-cache' }
     } catch (e) {
       return { ok: false, error: (e as Error).message, path }
@@ -787,6 +827,14 @@ export class VpnManager {
 
   // ─── Start VPN (TUN when possible; else SOCKS + OS proxy — no admin needed) ──
   async start(): Promise<void> {
+    if (usingHereticVpn()) {
+      await hereticVpnCtl('start')
+      const ok = await waitHereticSocks()
+      if (!ok && !hereticVpnActiveSync()) {
+        throw new Error('heretic-vpn.service failed to start (same backend as the dashboard)')
+      }
+      return
+    }
     const s = loadSettings()
     const r = activeRunner()
     r.kind === 'xray' ? runner.ensureXrayExtracted() : singbox().ensureExtracted()
@@ -819,6 +867,10 @@ export class VpnManager {
   }
 
   async stop(): Promise<void> {
+    if (usingHereticVpn()) {
+      await hereticVpnCtl('stop')
+      return
+    }
     this.releaseTrafficCapture()
     const r = activeRunner()
     if (r.kind === 'xray') await runner.stop()
@@ -831,6 +883,7 @@ export class VpnManager {
   }
 
   isRunning(): boolean {
+    if (usingHereticVpn()) return hereticVpnActiveSync()
     return activeRunner().isRunning()
   }
 
@@ -847,7 +900,7 @@ export class VpnManager {
     tunOk: boolean
   }> {
     const r = activeRunner()
-    const running = r.isRunning()
+    const running = this.isRunning()
     let activeNode = ''
     let override = ''
     let apiOk = false
@@ -871,7 +924,7 @@ export class VpnManager {
           }
           override = bi.override
           apiOk = bi.ok
-          socksOk = await runner.socksOk()
+          socksOk = usingHereticVpn() ? await hereticSocksOpen() : await runner.socksOk()
           tunOk = await runner.tunOk()
         }
       } catch { /* core not ready yet */ }
@@ -881,7 +934,7 @@ export class VpnManager {
       const stale = !_egressIp || Date.now() - _egressTs > EGRESS_TTL
       if (stale) {
         try {
-          const ip = await runner.probeEgress()
+          const ip = usingHereticVpn() ? await probeHereticEgress() : await runner.probeEgress()
           if (ip) {
             _egressIp = ip
             _egressTs = Date.now()
@@ -917,7 +970,7 @@ export class VpnManager {
     const byTag = new Map(staticNodes.map((n) => [n.tag, n]))
     const result: { tag: string; server: string; port: number; alive: boolean | null; delayMs: number | null; lastError: string }[] = []
     let aliveCount = 0
-    if (r.isRunning()) {
+    if (r.isRunning() || (usingHereticVpn() && this.isRunning())) {
       try {
         if (r.kind === 'singbox') {
           const delays = await singbox().testAllDelays()
@@ -1004,6 +1057,11 @@ export class VpnManager {
   }
 
   async getLogs(lines = 200): Promise<string[]> {
+    if (usingHereticVpn() && existsSync(HERETIC_VPN_LOG)) {
+      const text = readFileSync(HERETIC_VPN_LOG, 'utf-8')
+      const all = text.split(/\r?\n/)
+      return all.slice(-Math.max(1, lines))
+    }
     const r = activeRunner()
     if (r.kind === 'singbox') return singbox().tailLog(lines)
     return runner.tailLog(lines)
@@ -1011,6 +1069,10 @@ export class VpnManager {
 
   // ─── Cleanup ──────────────────────────────────────────────
   async close(): Promise<void> {
+    if (usingHereticVpn()) {
+      grpc.closeGrpc()
+      return
+    }
     await this.stop()
     // Also stop the inactive core in case it was left running across a switch.
     try { if (_singbox?.isRunning()) await _singbox.stop() } catch { /* ignore */ }
