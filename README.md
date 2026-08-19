@@ -40,7 +40,7 @@ If a panel only allows a whitelist app (e.g. “Install HAPP” stubs), use **Im
 ### License
 
 **MIT** — you may use, modify, and share freely.  
-Copyright stays with **petushokmaxorka-ai**. When you redistribute or fork, keep the copyright notice and mention this project (see [`LICENSE`](LICENSE)).
+Copyright stays with **petushokmaxorka-ai**; keep the copyright/permission notice when redistributing (standard MIT). A visible mention of Void Shield is appreciated.
 
 ### Build from source
 
@@ -88,7 +88,7 @@ FlClashX не нужен. systemd не нужен. Отдельный VPN в с�
 ### Лицензия
 
 **MIT** — пользоваться, менять и распространять можно свободно.  
-Права остаются у **petushokmaxorka-ai**. При форке / публикации своей версии нужно **оставить copyright и упомянуть** этот проект (см. [`LICENSE`](LICENSE)).
+Права остаются у **petushokmaxorka-ai**; при распространении сохраняй copyright и текст разрешения (стандартный MIT). Отдельное упоминание Void Shield — приветствуется.
 
 ### Сборка из исходников
 
