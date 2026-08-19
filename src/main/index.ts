@@ -257,6 +257,23 @@ if (gotTheLock) app.whenReady().then(() => {
       .catch((e) => console.error('[void-shield] pre-seed failed:', e))
   }
 
+  // First-run / config-missing recovery: if a subscription URL is already
+  // stored (safeStorage-encrypted) but no runnable core config exists, pull
+  // the nodes from that URL automatically. This removes the manual
+  // "export nodes from another client" step after reinstall/update.
+  const storedUrl = vpn.getSubscriptionUrl()
+  if (!seedUrl && storedUrl && !vpn.getState().hasSubscription) {
+    console.log('[void-shield] auto-registering nodes from stored subscription URL')
+    void vpn.updateSubscription(storedUrl).then((r) => {
+      console.log(`[void-shield] auto-registered: ${r.nodes} nodes (${r.format}, ${r.source ?? 'url'})`)
+      if (vpn.getState().needsCaps) {
+        try { vpn.grantCapabilities() } catch (e) { console.error('[void-shield] caps grant failed:', e) }
+      }
+      return vpn.start()
+    }).then(() => console.log('[void-shield] auto-ignited from stored subscription'))
+      .catch((e) => console.error('[void-shield] stored-subscription auto-register failed:', e))
+  }
+
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
