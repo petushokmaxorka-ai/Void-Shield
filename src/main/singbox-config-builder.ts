@@ -366,7 +366,9 @@ export function buildSingboxConfig(nodes: ParsedNode[], opts: SingboxBuildOption
         { action: 'sniff' },
         // DNS hijack — route DNS queries from TUN through sing-box DNS resolver.
         // (1.11+: `dns` outbound removed; use `action: 'hijack-dns'` rule.)
-        { action: 'hijack-dns' },
+        // Must match only DNS: a rule without conditions matches every
+        // connection, which would turn all proxied traffic into DNS queries.
+        { protocol: 'dns', action: 'hijack-dns' },
         // Gosuslugi / gov — RU node (or direct). Other connections stay on foreign AUTO.
         { domain_suffix: RU_CIVIC_DOMAIN_SUFFIXES, outbound: civicOutbound },
         // Scenario-specific bypass rules (e.g. RU/CN domains → direct).

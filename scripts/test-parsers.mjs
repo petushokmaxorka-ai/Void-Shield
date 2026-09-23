@@ -478,3 +478,15 @@ test('sing-box DNS: MagicDNS by default, public resolver without Tailscale', () 
     execFileSync(SINGBOX_BIN, ['check', '-c', tmpConfig], { stdio: 'pipe', timeout: 10000 })
   }
 })
+
+test('sing-box hijack-dns only matches DNS traffic', () => {
+  // An unconditioned hijack-dns rule matches every connection, so all
+  // proxied traffic would be answered as DNS instead of being forwarded.
+  const parsed = parseSubscription(VLESS_REALITY)
+  for (const enableTun of [false, true]) {
+    const cfg = buildSingboxConfig(parsed.nodes, { enableTun })
+    const hijack = cfg.route.rules.filter((r) => r.action === 'hijack-dns')
+    assert.equal(hijack.length, 1)
+    assert.equal(hijack[0].protocol, 'dns')
+  }
+})
