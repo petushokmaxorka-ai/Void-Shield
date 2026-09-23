@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - name: Lint shell scripts
+        if: runner.os == 'Linux'
+        run: shellcheck scripts/*.sh resources/*.sh
+      # Pinned + sha256-verified cores so the tests can validate generated
+      # configs with the real xray / sing-box binaries (they skip otherwise).
+      - name: Fetch proxy cores (linux)
+        if: runner.os == 'Linux'
+        run: |
+          bash scripts/fetch-xray.sh
+          bash scripts/fetch-singbox.sh || echo "WARN: sing-box fetch failed (optional core)"
+      - name: Typecheck + compile
+        shell: bash
+        run: npm run build
+      - name: Tests
+        shell: bash
+        run: npm test
