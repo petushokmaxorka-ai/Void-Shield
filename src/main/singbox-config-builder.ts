@@ -208,6 +208,10 @@ export interface SingboxBuildOptions {
   enableTun?: boolean
   /** Set OS system proxy to point at our mixed inbound. Default false. */
   setSystemProxy?: boolean
+  /** Resolve via Tailscale MagicDNS (100.100.100.100). Default true. Pass
+   *  false when Tailscale is not running: that address is unreachable then,
+   *  so every lookup (incl. proxy server hostnames) would time out. */
+  magicDns?: boolean
 }
 
 // ─── WireGuard endpoint (sing-box 1.11+ replaces the old outbound) ──
@@ -236,6 +240,10 @@ const URLTEST_TAG = 'auto'
 const SELECTOR_TAG = 'proxy'
 const RU_HOME_TAG = 'ru-home'
 
+function magicDnsServer(): Record<string, unknown> {
+  return { type: 'udp', tag: 'magicdns', server: '100.100.100.100' }
+}
+
 export function singboxTunInbound(): Record<string, unknown> {
   return {
     type: 'tun',
@@ -262,6 +270,8 @@ export function buildSingboxConfig(nodes: ParsedNode[], opts: SingboxBuildOption
   const autoTags = autoBalancerTags(tags)
   const ruTags = ruHomeTags(tags)
   const civicOutbound = ruTags.length > 0 ? RU_HOME_TAG : 'direct'
+  const useMagicDns = opts.magicDns !== false
+  const dnsFinal = useMagicDns ? 'magicdns' : 'cloudflare'
 
   return {
     log: {
@@ -285,13 +295,14 @@ export function buildSingboxConfig(nodes: ParsedNode[], opts: SingboxBuildOption
     // TUN was intercepting its queries. Using an explicit IPv4 UDP server
     // (100.100.100.100 = Tailscale MagicDNS on this host, which resolves the
     // provider's private *.waynodes.ru domains) avoids both the IPv6 path and
-    // the loopback. Fallback 1.1.1.1 for public domains.
+    // the loopback. Fallback 1.1.1.1 for public domains — and the only
+    // resolver on hosts without Tailscale (opts.magicDns === false).
     dns: {
       servers: opts.dnsServers ?? [
-        { type: 'udp', tag: 'magicdns', server: '100.100.100.100' },
+        ...(useMagicDns ? [magicDnsServer()] : []),
         { type: 'udp', tag: 'cloudflare', server: '1.1.1.1' },
       ],
-      final: 'magicdns',
+      final: dnsFinal,
       strategy: 'ipv4_only',
       reverse_mapping: true,
       independent_cache: true,
@@ -359,7 +370,9 @@ export function buildSingboxConfig(nodes: ParsedNode[], opts: SingboxBuildOption
         { action: 'sniff' },
         // DNS hijack — route DNS queries from TUN through sing-box DNS resolver.
         // (1.11+: `dns` outbound removed; use `action: 'hijack-dns'` rule.)
-        { action: 'hijack-dns' },
+        // Must match only DNS: a rule without conditions matches every
+        // connection, which would turn all proxied traffic into DNS queries.
+        { protocol: 'dns', action: 'hijack-dns' },
         // Gosuslugi / gov — RU node (or direct). Other connections stay on foreign AUTO.
         { domain_suffix: RU_CIVIC_DOMAIN_SUFFIXES, outbound: civicOutbound },
         // Scenario-specific bypass rules (e.g. RU/CN domains → direct).
@@ -384,9 +397,46 @@ export function buildSingboxConfig(nodes: ParsedNode[], opts: SingboxBuildOption
       // 1.12+: outbound dial needs an explicit domain resolver.
       // Explicit IPv4 resolver for outbound dial (proxy server hostnames are
       // private domains resolved only by Tailscale MagicDNS 100.100.100.100).
-      default_domain_resolver: { server: 'magicdns' },
+      default_domain_resolver: { server: dnsFinal },
     },
   }
+}
+
+// ─── Upgrade a config written earlier (start-time, in place) ─
+// The config file is only rebuilt on subscription import/refresh, so fixes
+// to the builder would not reach existing installs (file imports never
+// refresh). Patch what matters in place: the DNS-only hijack rule, and
+// MagicDNS vs 1.1.1.1 for the current Tailscale state. Only touches configs
+// that use this builder's DNS servers. Returns true when cfg was changed.
+export function upgradeSingboxConfig(cfg: Record<string, unknown>, opts: { magicDns: boolean }): boolean {
+  let changed = false
+  const route = cfg.route as { rules?: Record<string, unknown>[]; default_domain_resolver?: { server?: string } } | undefined
+  for (const r of route?.rules ?? []) {
+    // Before the fix this rule had no condition and hijacked every connection.
+    if (r.action === 'hijack-dns' && Object.keys(r).length === 1) {
+      r.protocol = 'dns'
+      changed = true
+    }
+  }
+  const dns = cfg.dns as { servers?: Record<string, unknown>[]; final?: string } | undefined
+  const servers = dns?.servers
+  if (!route || !servers?.some((s) => s.tag === 'cloudflare')) return changed
+  if (dns.final !== 'magicdns' && dns.final !== 'cloudflare') return changed
+  const want = opts.magicDns ? 'magicdns' : 'cloudflare'
+  const hasMagic = servers.some((s) => s.tag === 'magicdns')
+  if (opts.magicDns && !hasMagic) {
+    servers.unshift(magicDnsServer())
+    changed = true
+  } else if (!opts.magicDns && hasMagic) {
+    dns.servers = servers.filter((s) => s.tag !== 'magicdns')
+    changed = true
+  }
+  if (dns.final !== want || route.default_domain_resolver?.server !== want) {
+    dns.final = want
+    route.default_domain_resolver = { server: want }
+    changed = true
+  }
+  return changed
 }
 
 // ─── Helpers exposed for the runner / vpn-manager ───────────

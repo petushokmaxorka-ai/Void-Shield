@@ -11,7 +11,7 @@ import {
   parseSubscription,
   parseUserInfoHeader,
 } from '../out/test-src/main/subscription.js'
-import { buildSingboxConfig } from '../out/test-src/main/singbox-config-builder.js'
+import { buildSingboxConfig, upgradeSingboxConfig } from '../out/test-src/main/singbox-config-builder.js'
 import { buildConfig } from '../out/test-src/main/config-builder.js'
 import { execFileSync } from 'child_process'
 import { existsSync, writeFileSync } from 'fs'
@@ -461,4 +461,56 @@ test('sing-box civic split: Gosuslugi → ru-home urltest', () => {
   assert.ok(auto.outbounds.every((t) => !/РОССИЯ|🇷🇺/.test(t)), 'sing-box AUTO excludes RU')
   const civic = cfg.route.rules.find((r) => Array.isArray(r.domain_suffix) && r.domain_suffix.includes('gosuslugi.ru'))
   assert.equal(civic.outbound, 'ru-home')
+})
+
+test('sing-box DNS: MagicDNS by default, public resolver without Tailscale', () => {
+  const parsed = parseSubscription(VLESS_REALITY)
+  const withTs = buildSingboxConfig(parsed.nodes)
+  assert.equal(withTs.dns.final, 'magicdns')
+  assert.equal(withTs.route.default_domain_resolver.server, 'magicdns')
+  const noTs = buildSingboxConfig(parsed.nodes, { magicDns: false })
+  assert.equal(noTs.dns.final, 'cloudflare')
+  assert.equal(noTs.route.default_domain_resolver.server, 'cloudflare')
+  assert.ok(noTs.dns.servers.every((s) => s.server !== '100.100.100.100'), 'no unreachable MagicDNS server')
+  if (SINGBOX_AVAILABLE) {
+    const tmpConfig = '/tmp/vs-test-singbox-no-tailscale.json'
+    writeFileSync(tmpConfig, JSON.stringify(noTs, null, 2))
+    execFileSync(SINGBOX_BIN, ['check', '-c', tmpConfig], { stdio: 'pipe', timeout: 10000 })
+  }
+})
+
+test('sing-box hijack-dns only matches DNS traffic', () => {
+  // An unconditioned hijack-dns rule matches every connection, so all
+  // proxied traffic would be answered as DNS instead of being forwarded.
+  const parsed = parseSubscription(VLESS_REALITY)
+  for (const enableTun of [false, true]) {
+    const cfg = buildSingboxConfig(parsed.nodes, { enableTun })
+    const hijack = cfg.route.rules.filter((r) => r.action === 'hijack-dns')
+    assert.equal(hijack.length, 1)
+    assert.equal(hijack[0].protocol, 'dns')
+  }
+})
+
+test('sing-box config upgrade: fixes old hijack rule, follows Tailscale state', () => {
+  const parsed = parseSubscription(VLESS_REALITY)
+  // Config as written by older builds: MagicDNS + unconditioned hijack-dns.
+  const old = buildSingboxConfig(parsed.nodes)
+  const i = old.route.rules.findIndex((r) => r.action === 'hijack-dns')
+  old.route.rules[i] = { action: 'hijack-dns' }
+  assert.equal(upgradeSingboxConfig(old, { magicDns: false }), true)
+  const want = buildSingboxConfig(parsed.nodes, { magicDns: false })
+  assert.deepEqual(old.route.rules, want.route.rules)
+  assert.deepEqual(old.dns, want.dns)
+  assert.deepEqual(old.route.default_domain_resolver, want.route.default_domain_resolver)
+  assert.equal(upgradeSingboxConfig(old, { magicDns: false }), false, 'idempotent')
+  // Tailscale came up after import: MagicDNS is restored.
+  assert.equal(upgradeSingboxConfig(old, { magicDns: true }), true)
+  const withTs = buildSingboxConfig(parsed.nodes)
+  assert.deepEqual(old.dns, withTs.dns)
+  assert.deepEqual(old.route.default_domain_resolver, withTs.route.default_domain_resolver)
+  // Configs with other DNS servers are left alone.
+  const custom = buildSingboxConfig(parsed.nodes, { dnsServers: [{ type: 'udp', tag: 'mine', server: '9.9.9.9' }] })
+  const before = JSON.stringify(custom)
+  assert.equal(upgradeSingboxConfig(custom, { magicDns: false }), false)
+  assert.equal(JSON.stringify(custom), before)
 })

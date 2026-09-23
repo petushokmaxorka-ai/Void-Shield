@@ -7,7 +7,7 @@
 import { execFile } from 'child_process'
 import { readFileSync, existsSync, writeFileSync, mkdtempSync, rmSync, readdirSync, statSync } from 'fs'
 import { join } from 'path'
-import { homedir, tmpdir } from 'os'
+import { homedir, networkInterfaces, tmpdir } from 'os'
 import * as http from 'http'
 import * as https from 'https'
 import { app } from 'electron'
@@ -21,7 +21,7 @@ import {
   whitelistStubError,
 } from './subscription'
 import { buildConfig, xrayTunInbound } from './config-builder'
-import { buildSingboxConfig, SINGBOX_CLASH_API, SINGBOX_MIXED_PORT, singboxTunInbound } from './singbox-config-builder'
+import { buildSingboxConfig, SINGBOX_CLASH_API, SINGBOX_MIXED_PORT, SINGBOX_URLTEST_TAG, singboxTunInbound, upgradeSingboxConfig } from './singbox-config-builder'
 import { SingboxRunner } from './singbox-runner'
 import * as grpc from './grpc-client'
 import * as runner from './xray-runner'
@@ -58,6 +58,26 @@ function activeRunner(): { kind: CoreEngine; path: () => string; configPath: () 
   }
   const sb = singbox()
   return { kind: 'singbox', path: () => sb.binaryPath(), configPath: () => sb.configPath(), isRunning: () => sb.isRunning(), startedTime: () => sb.startedTime() }
+}
+
+// Tailscale MagicDNS (100.100.100.100) only answers while tailscaled is up.
+// Detect its interface (tailscale0 / "Tailscale") or a 100.64.0.0/10 address
+// on a macOS utunN, so sing-box configs only use it where it can work.
+// The address check is limited to utun: ISPs also hand out 100.64.0.0/10
+// (CGNAT) directly to hosts, e.g. over PPPoE, which is not Tailscale.
+function tailscaleActive(): boolean {
+  try {
+    for (const [name, addrs] of Object.entries(networkInterfaces())) {
+      if (/tailscale/i.test(name)) return true
+      if (!/^utun\d*$/.test(name)) continue
+      for (const a of addrs ?? []) {
+        if (a.family !== 'IPv4' || a.internal) continue
+        const [o1, o2] = a.address.split('.').map(Number)
+        if (o1 === 100 && o2 >= 64 && o2 <= 127) return true
+      }
+    }
+  } catch { /* no interface info — assume no Tailscale */ }
+  return false
 }
 
 // Egress-IP cache (refreshed at most every 30s).
@@ -468,6 +488,7 @@ export class VpnManager {
         scenario,
         enableTun,
         setSystemProxy,
+        magicDns: tailscaleActive(),
       })
       writeFileSync(singbox().configPath(), JSON.stringify(sbConfig, null, 2))
     } else {
@@ -500,6 +521,20 @@ export class VpnManager {
       })
       cfg.inbounds = inbounds
       writeFileSync(p, JSON.stringify(cfg, null, 2))
+    } catch {
+      /* next import rebuilds */
+    }
+  }
+
+  /** Upgrade an existing sing-box config (DNS hijack rule, MagicDNS vs Tailscale state). */
+  private syncSingboxConfig(): void {
+    const p = singbox().configPath()
+    if (!existsSync(p)) return
+    try {
+      const cfg = JSON.parse(readFileSync(p, 'utf-8')) as Record<string, unknown>
+      if (upgradeSingboxConfig(cfg, { magicDns: tailscaleActive() })) {
+        writeFileSync(p, JSON.stringify(cfg, null, 2))
+      }
     } catch {
       /* next import rebuilds */
     }
@@ -839,6 +874,7 @@ export class VpnManager {
     const r = activeRunner()
     r.kind === 'xray' ? runner.ensureXrayExtracted() : singbox().ensureExtracted()
     if (r.kind === 'xray') this.ensureXrayHttpInbound()
+    else this.syncSingboxConfig()
     const tun = this.effectiveTun(s, r.path())
     this.syncTunInbound(tun, r.kind)
     const runCore = async (): Promise<void> => {
@@ -911,8 +947,11 @@ export class VpnManager {
         if (r.kind === 'singbox') {
           const sb = singbox()
           const { selector, urltest } = await sb.getActiveNode()
-          activeNode = selector || urltest
-          override = selector && selector !== urltest ? selector : ''
+          // selector.now is the urltest group tag ('auto') in AUTO mode, or a
+          // node tag when the user pinned one; urltest.now is the chosen node.
+          const pinned = selector && selector !== SINGBOX_URLTEST_TAG ? selector : ''
+          activeNode = pinned || urltest
+          override = pinned
           apiOk = Boolean(urltest || selector)
           socksOk = apiOk
           tunOk = false // sing-box TUN probe: clash-api only today
@@ -934,7 +973,10 @@ export class VpnManager {
       const stale = !_egressIp || Date.now() - _egressTs > EGRESS_TTL
       if (stale) {
         try {
-          const ip = usingHereticVpn() ? await probeHereticEgress() : await runner.probeEgress()
+          // Probe through the active core's own inbound (sing-box: mixed :7899).
+          const ip = usingHereticVpn()
+            ? await probeHereticEgress()
+            : await runner.probeEgress(r.kind === 'singbox' ? `socks5h://${XRAY_SOCKS_HOST}:${SINGBOX_MIXED_PORT}` : undefined)
           if (ip) {
             _egressIp = ip
             _egressTs = Date.now()

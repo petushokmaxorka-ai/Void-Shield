@@ -30,8 +30,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          bash scripts/fetch-xray.sh v26.3.27
-          bash scripts/fetch-singbox.sh v1.12.12 || echo "WARN: sing-box fetch failed (optional core)"
+          # No version args: use the versions pinned in the scripts, which are
+          # the only ones whose sha256 digests get verified before extraction.
+          bash scripts/fetch-xray.sh
+          bash scripts/fetch-singbox.sh || echo "WARN: sing-box fetch failed (optional core)"
           ls -lh resources/bin/linux-x64/
           ls -lh resources/bin/*.dat || true
       - run: npm test
@@ -40,13 +42,17 @@ jobs:
       - name: Package AppImage + tar.gz
         env:
           DEBUG: electron-builder
-        run: npx electron-builder --linux --publish never
+        run: |
+          npx electron-builder --linux --publish never
+          # electron-updater feed — without it installed AppImages never update.
+          test -f release/latest-linux.yml
       - uses: actions/upload-artifact@v4
         with:
           name: void-shield-linux
           path: |
             release/*.AppImage
             release/*.tar.gz
+            release/latest-linux.yml
           if-no-files-found: error
 
   build-windows:
@@ -63,8 +69,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          bash scripts/fetch-xray.sh v26.3.27
-          bash scripts/fetch-singbox.sh v1.12.12 || echo "WARN: sing-box fetch failed (optional core)"
+          # No version args: use the versions pinned in the scripts, which are
+          # the only ones whose sha256 digests get verified before extraction.
+          bash scripts/fetch-xray.sh
+          bash scripts/fetch-singbox.sh || echo "WARN: sing-box fetch failed (optional core)"
           test -f resources/bin/windows-x64/xray.exe
           ls -lh resources/bin/windows-x64/
           ls -lh resources/bin/*.dat || true
@@ -77,12 +85,17 @@ jobs:
         shell: bash
         env:
           DEBUG: electron-builder
-        run: npx electron-builder --win --publish never
+        run: |
+          npx electron-builder --win --publish never
+          # electron-updater feed — without it installed copies never update.
+          test -f release/latest.yml
       - uses: actions/upload-artifact@v4
         with:
           name: void-shield-windows
           path: |
             release/*.exe
+            release/*.exe.blockmap
+            release/latest.yml
           if-no-files-found: error
 
   publish:

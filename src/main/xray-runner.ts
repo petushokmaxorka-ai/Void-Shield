@@ -133,11 +133,11 @@ export function tailLog(lines: number): Promise<string[]> {
   return runner().tailLog(lines)
 }
 
-export function probeEgress(): Promise<string> {
+export function probeEgress(proxy = XRAY_SOCKS_PROXY): Promise<string> {
   return new Promise((resolve) => {
     execFile(
       'curl',
-      ['-4', '-sS', '--max-time', '4', '-x', XRAY_SOCKS_PROXY, 'https://api.ipify.org'],
+      ['-4', '-sS', '--max-time', '4', '-x', proxy, 'https://api.ipify.org'],
       { encoding: 'utf-8', timeout: 6000 },
       (err, stdout) => resolve(err ? '' : stdout.trim())
     )

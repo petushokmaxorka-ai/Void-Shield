@@ -23,7 +23,7 @@ No FlClashX required. No systemd. No local VPN install.
 2. Open the latest release
 3. Download:
    - **Linux** → `VoidShield-*.AppImage` → `chmod +x` → run
-   - **Windows** → `VoidShield Setup *.exe` → install → run
+   - **Windows** → `VoidShield-Setup-*.exe` → install → run
 4. Paste your subscription URL → **REGISTER & IGNITE**
 
 If Releases is empty, check [Actions](https://github.com/petushokmaxorka-ai/Void-Shield/actions) — CI may still be building or failed.
@@ -46,9 +46,10 @@ Copyright stays with **petushokmaxorka-ai**; keep the copyright/permission notic
 
 ```bash
 npm install
-npm run fetch-xray
+npm run fetch-xray      # xray-core + geo data (required)
+npm run fetch-singbox   # sing-box core (optional: Hysteria2/TUIC/WireGuard engine)
 npm run build:linux   # → release/*.AppImage
-npm run build:win     # → release/*Setup*.exe
+npm run build:win     # → release/VoidShield-Setup-*.exe
 npm test
 ```
 
@@ -71,7 +72,7 @@ FlClashX не нужен. systemd не нужен. Отдельный VPN в с�
 2. Взять последний релиз
 3. Скачать:
    - **Linux** → `VoidShield-*.AppImage` → `chmod +x` → запустить
-   - **Windows** → `VoidShield Setup *.exe` → установить → запустить
+   - **Windows** → `VoidShield-Setup-*.exe` → установить → запустить
 4. Вставить URL подписки → **REGISTER & IGNITE**
 
 Если Releases пустой — смотри [Actions](https://github.com/petushokmaxorka-ai/Void-Shield/actions): сборка ещё идёт или упала.
@@ -94,9 +95,10 @@ FlClashX не нужен. systemd не нужен. Отдельный VPN в с�
 
 ```bash
 npm install
-npm run fetch-xray
+npm run fetch-xray      # xray-core + geo-данные (обязательно)
+npm run fetch-singbox   # ядро sing-box (опционально: движок Hysteria2/TUIC/WireGuard)
 npm run build:linux   # → release/*.AppImage
-npm run build:win     # → release/*Setup*.exe
+npm run build:win     # → release/VoidShield-Setup-*.exe
 npm test
 ```
 
@@ -118,12 +120,18 @@ Main  VpnManager → fetch URL → parse → build config → spawn xray/sing-bo
 
 ## Releasing
 
+1. Bump `"version"` in `package.json` (the tag must match it — auto-update compares this version).
+2. Commit, then tag and push:
+
 ```bash
-git tag v1.1.0
-git push origin v1.1.0
+git tag v1.2.3        # same version as package.json
+git push origin v1.2.3
 ```
 
-Push a tag `v*` → GitHub Actions builds Linux AppImage + Windows NSIS → Release assets.
+Push a tag `v*` → GitHub Actions builds Linux AppImage + Windows NSIS → Release assets
+(including `latest.yml` / `latest-linux.yml`, which installed copies use to auto-update).
+
+Every push to `main` and every pull request runs CI (typecheck, build, tests, shellcheck).
 
 ---
 
