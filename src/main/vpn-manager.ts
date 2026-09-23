@@ -62,11 +62,14 @@ function activeRunner(): { kind: CoreEngine; path: () => string; configPath: () 
 
 // Tailscale MagicDNS (100.100.100.100) only answers while tailscaled is up.
 // Detect its interface (tailscale0 / "Tailscale") or a 100.64.0.0/10 address
-// (macOS utunN) so sing-box configs only use it where it can work.
+// on a macOS utunN, so sing-box configs only use it where it can work.
+// The address check is limited to utun: ISPs also hand out 100.64.0.0/10
+// (CGNAT) directly to hosts, e.g. over PPPoE, which is not Tailscale.
 function tailscaleActive(): boolean {
   try {
     for (const [name, addrs] of Object.entries(networkInterfaces())) {
       if (/tailscale/i.test(name)) return true
+      if (!/^utun\d*$/.test(name)) continue
       for (const a of addrs ?? []) {
         if (a.family !== 'IPv4' || a.internal) continue
         const [o1, o2] = a.address.split('.').map(Number)
