@@ -21,7 +21,7 @@ import {
   whitelistStubError,
 } from './subscription'
 import { buildConfig, xrayTunInbound } from './config-builder'
-import { buildSingboxConfig, SINGBOX_CLASH_API, SINGBOX_MIXED_PORT, singboxTunInbound } from './singbox-config-builder'
+import { buildSingboxConfig, SINGBOX_CLASH_API, SINGBOX_MIXED_PORT, SINGBOX_URLTEST_TAG, singboxTunInbound } from './singbox-config-builder'
 import { SingboxRunner } from './singbox-runner'
 import * as grpc from './grpc-client'
 import * as runner from './xray-runner'
@@ -911,8 +911,11 @@ export class VpnManager {
         if (r.kind === 'singbox') {
           const sb = singbox()
           const { selector, urltest } = await sb.getActiveNode()
-          activeNode = selector || urltest
-          override = selector && selector !== urltest ? selector : ''
+          // selector.now is the urltest group tag ('auto') in AUTO mode, or a
+          // node tag when the user pinned one; urltest.now is the chosen node.
+          const pinned = selector && selector !== SINGBOX_URLTEST_TAG ? selector : ''
+          activeNode = pinned || urltest
+          override = pinned
           apiOk = Boolean(urltest || selector)
           socksOk = apiOk
           tunOk = false // sing-box TUN probe: clash-api only today
