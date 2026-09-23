@@ -30,8 +30,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          bash scripts/fetch-xray.sh v26.3.27
-          bash scripts/fetch-singbox.sh v1.12.12 || echo "WARN: sing-box fetch failed (optional core)"
+          # No version args: use the versions pinned in the scripts, which are
+          # the only ones whose sha256 digests get verified before extraction.
+          bash scripts/fetch-xray.sh
+          bash scripts/fetch-singbox.sh || echo "WARN: sing-box fetch failed (optional core)"
           ls -lh resources/bin/linux-x64/
           ls -lh resources/bin/*.dat || true
       - run: npm test
@@ -67,8 +69,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          bash scripts/fetch-xray.sh v26.3.27
-          bash scripts/fetch-singbox.sh v1.12.12 || echo "WARN: sing-box fetch failed (optional core)"
+          # No version args: use the versions pinned in the scripts, which are
+          # the only ones whose sha256 digests get verified before extraction.
+          bash scripts/fetch-xray.sh
+          bash scripts/fetch-singbox.sh || echo "WARN: sing-box fetch failed (optional core)"
           test -f resources/bin/windows-x64/xray.exe
           ls -lh resources/bin/windows-x64/
           ls -lh resources/bin/*.dat || true
