@@ -21,7 +21,7 @@ import {
   whitelistStubError,
 } from './subscription'
 import { buildConfig, xrayTunInbound } from './config-builder'
-import { buildSingboxConfig, SINGBOX_CLASH_API, SINGBOX_MIXED_PORT, SINGBOX_URLTEST_TAG, singboxTunInbound } from './singbox-config-builder'
+import { buildSingboxConfig, SINGBOX_CLASH_API, SINGBOX_MIXED_PORT, SINGBOX_URLTEST_TAG, singboxTunInbound, upgradeSingboxConfig } from './singbox-config-builder'
 import { SingboxRunner } from './singbox-runner'
 import * as grpc from './grpc-client'
 import * as runner from './xray-runner'
@@ -526,6 +526,20 @@ export class VpnManager {
     }
   }
 
+  /** Upgrade an existing sing-box config (DNS hijack rule, MagicDNS vs Tailscale state). */
+  private syncSingboxConfig(): void {
+    const p = singbox().configPath()
+    if (!existsSync(p)) return
+    try {
+      const cfg = JSON.parse(readFileSync(p, 'utf-8')) as Record<string, unknown>
+      if (upgradeSingboxConfig(cfg, { magicDns: tailscaleActive() })) {
+        writeFileSync(p, JSON.stringify(cfg, null, 2))
+      }
+    } catch {
+      /* next import rebuilds */
+    }
+  }
+
   /** After start without TUN: OS user proxy → HTTP inbound (browsers, no admin). */
   private applyTrafficCapture(enableTun: boolean): void {
     if (enableTun) return
@@ -860,6 +874,7 @@ export class VpnManager {
     const r = activeRunner()
     r.kind === 'xray' ? runner.ensureXrayExtracted() : singbox().ensureExtracted()
     if (r.kind === 'xray') this.ensureXrayHttpInbound()
+    else this.syncSingboxConfig()
     const tun = this.effectiveTun(s, r.path())
     this.syncTunInbound(tun, r.kind)
     const runCore = async (): Promise<void> => {

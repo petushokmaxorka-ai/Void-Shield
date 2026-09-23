@@ -240,6 +240,10 @@ const URLTEST_TAG = 'auto'
 const SELECTOR_TAG = 'proxy'
 const RU_HOME_TAG = 'ru-home'
 
+function magicDnsServer(): Record<string, unknown> {
+  return { type: 'udp', tag: 'magicdns', server: '100.100.100.100' }
+}
+
 export function singboxTunInbound(): Record<string, unknown> {
   return {
     type: 'tun',
@@ -295,7 +299,7 @@ export function buildSingboxConfig(nodes: ParsedNode[], opts: SingboxBuildOption
     // resolver on hosts without Tailscale (opts.magicDns === false).
     dns: {
       servers: opts.dnsServers ?? [
-        ...(useMagicDns ? [{ type: 'udp', tag: 'magicdns', server: '100.100.100.100' }] : []),
+        ...(useMagicDns ? [magicDnsServer()] : []),
         { type: 'udp', tag: 'cloudflare', server: '1.1.1.1' },
       ],
       final: dnsFinal,
@@ -396,6 +400,43 @@ export function buildSingboxConfig(nodes: ParsedNode[], opts: SingboxBuildOption
       default_domain_resolver: { server: dnsFinal },
     },
   }
+}
+
+// ─── Upgrade a config written earlier (start-time, in place) ─
+// The config file is only rebuilt on subscription import/refresh, so fixes
+// to the builder would not reach existing installs (file imports never
+// refresh). Patch what matters in place: the DNS-only hijack rule, and
+// MagicDNS vs 1.1.1.1 for the current Tailscale state. Only touches configs
+// that use this builder's DNS servers. Returns true when cfg was changed.
+export function upgradeSingboxConfig(cfg: Record<string, unknown>, opts: { magicDns: boolean }): boolean {
+  let changed = false
+  const route = cfg.route as { rules?: Record<string, unknown>[]; default_domain_resolver?: { server?: string } } | undefined
+  for (const r of route?.rules ?? []) {
+    // Before the fix this rule had no condition and hijacked every connection.
+    if (r.action === 'hijack-dns' && Object.keys(r).length === 1) {
+      r.protocol = 'dns'
+      changed = true
+    }
+  }
+  const dns = cfg.dns as { servers?: Record<string, unknown>[]; final?: string } | undefined
+  const servers = dns?.servers
+  if (!route || !servers?.some((s) => s.tag === 'cloudflare')) return changed
+  if (dns.final !== 'magicdns' && dns.final !== 'cloudflare') return changed
+  const want = opts.magicDns ? 'magicdns' : 'cloudflare'
+  const hasMagic = servers.some((s) => s.tag === 'magicdns')
+  if (opts.magicDns && !hasMagic) {
+    servers.unshift(magicDnsServer())
+    changed = true
+  } else if (!opts.magicDns && hasMagic) {
+    dns.servers = servers.filter((s) => s.tag !== 'magicdns')
+    changed = true
+  }
+  if (dns.final !== want || route.default_domain_resolver?.server !== want) {
+    dns.final = want
+    route.default_domain_resolver = { server: want }
+    changed = true
+  }
+  return changed
 }
 
 // ─── Helpers exposed for the runner / vpn-manager ───────────

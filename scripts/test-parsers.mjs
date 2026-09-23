@@ -11,7 +11,7 @@ import {
   parseSubscription,
   parseUserInfoHeader,
 } from '../out/test-src/main/subscription.js'
-import { buildSingboxConfig } from '../out/test-src/main/singbox-config-builder.js'
+import { buildSingboxConfig, upgradeSingboxConfig } from '../out/test-src/main/singbox-config-builder.js'
 import { buildConfig } from '../out/test-src/main/config-builder.js'
 import { execFileSync } from 'child_process'
 import { existsSync, writeFileSync } from 'fs'
@@ -489,4 +489,28 @@ test('sing-box hijack-dns only matches DNS traffic', () => {
     assert.equal(hijack.length, 1)
     assert.equal(hijack[0].protocol, 'dns')
   }
+})
+
+test('sing-box config upgrade: fixes old hijack rule, follows Tailscale state', () => {
+  const parsed = parseSubscription(VLESS_REALITY)
+  // Config as written by older builds: MagicDNS + unconditioned hijack-dns.
+  const old = buildSingboxConfig(parsed.nodes)
+  const i = old.route.rules.findIndex((r) => r.action === 'hijack-dns')
+  old.route.rules[i] = { action: 'hijack-dns' }
+  assert.equal(upgradeSingboxConfig(old, { magicDns: false }), true)
+  const want = buildSingboxConfig(parsed.nodes, { magicDns: false })
+  assert.deepEqual(old.route.rules, want.route.rules)
+  assert.deepEqual(old.dns, want.dns)
+  assert.deepEqual(old.route.default_domain_resolver, want.route.default_domain_resolver)
+  assert.equal(upgradeSingboxConfig(old, { magicDns: false }), false, 'idempotent')
+  // Tailscale came up after import: MagicDNS is restored.
+  assert.equal(upgradeSingboxConfig(old, { magicDns: true }), true)
+  const withTs = buildSingboxConfig(parsed.nodes)
+  assert.deepEqual(old.dns, withTs.dns)
+  assert.deepEqual(old.route.default_domain_resolver, withTs.route.default_domain_resolver)
+  // Configs with other DNS servers are left alone.
+  const custom = buildSingboxConfig(parsed.nodes, { dnsServers: [{ type: 'udp', tag: 'mine', server: '9.9.9.9' }] })
+  const before = JSON.stringify(custom)
+  assert.equal(upgradeSingboxConfig(custom, { magicDns: false }), false)
+  assert.equal(JSON.stringify(custom), before)
 })
