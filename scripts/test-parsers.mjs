@@ -462,3 +462,19 @@ test('sing-box civic split: Gosuslugi → ru-home urltest', () => {
   const civic = cfg.route.rules.find((r) => Array.isArray(r.domain_suffix) && r.domain_suffix.includes('gosuslugi.ru'))
   assert.equal(civic.outbound, 'ru-home')
 })
+
+test('sing-box DNS: MagicDNS by default, public resolver without Tailscale', () => {
+  const parsed = parseSubscription(VLESS_REALITY)
+  const withTs = buildSingboxConfig(parsed.nodes)
+  assert.equal(withTs.dns.final, 'magicdns')
+  assert.equal(withTs.route.default_domain_resolver.server, 'magicdns')
+  const noTs = buildSingboxConfig(parsed.nodes, { magicDns: false })
+  assert.equal(noTs.dns.final, 'cloudflare')
+  assert.equal(noTs.route.default_domain_resolver.server, 'cloudflare')
+  assert.ok(noTs.dns.servers.every((s) => s.server !== '100.100.100.100'), 'no unreachable MagicDNS server')
+  if (SINGBOX_AVAILABLE) {
+    const tmpConfig = '/tmp/vs-test-singbox-no-tailscale.json'
+    writeFileSync(tmpConfig, JSON.stringify(noTs, null, 2))
+    execFileSync(SINGBOX_BIN, ['check', '-c', tmpConfig], { stdio: 'pipe', timeout: 10000 })
+  }
+})

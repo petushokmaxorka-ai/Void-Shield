@@ -7,7 +7,7 @@
 import { execFile } from 'child_process'
 import { readFileSync, existsSync, writeFileSync, mkdtempSync, rmSync, readdirSync, statSync } from 'fs'
 import { join } from 'path'
-import { homedir, tmpdir } from 'os'
+import { homedir, networkInterfaces, tmpdir } from 'os'
 import * as http from 'http'
 import * as https from 'https'
 import { app } from 'electron'
@@ -58,6 +58,23 @@ function activeRunner(): { kind: CoreEngine; path: () => string; configPath: () 
   }
   const sb = singbox()
   return { kind: 'singbox', path: () => sb.binaryPath(), configPath: () => sb.configPath(), isRunning: () => sb.isRunning(), startedTime: () => sb.startedTime() }
+}
+
+// Tailscale MagicDNS (100.100.100.100) only answers while tailscaled is up.
+// Detect its interface (tailscale0 / "Tailscale") or a 100.64.0.0/10 address
+// (macOS utunN) so sing-box configs only use it where it can work.
+function tailscaleActive(): boolean {
+  try {
+    for (const [name, addrs] of Object.entries(networkInterfaces())) {
+      if (/tailscale/i.test(name)) return true
+      for (const a of addrs ?? []) {
+        if (a.family !== 'IPv4' || a.internal) continue
+        const [o1, o2] = a.address.split('.').map(Number)
+        if (o1 === 100 && o2 >= 64 && o2 <= 127) return true
+      }
+    }
+  } catch { /* no interface info — assume no Tailscale */ }
+  return false
 }
 
 // Egress-IP cache (refreshed at most every 30s).
@@ -468,6 +485,7 @@ export class VpnManager {
         scenario,
         enableTun,
         setSystemProxy,
+        magicDns: tailscaleActive(),
       })
       writeFileSync(singbox().configPath(), JSON.stringify(sbConfig, null, 2))
     } else {

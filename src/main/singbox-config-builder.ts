@@ -208,6 +208,10 @@ export interface SingboxBuildOptions {
   enableTun?: boolean
   /** Set OS system proxy to point at our mixed inbound. Default false. */
   setSystemProxy?: boolean
+  /** Resolve via Tailscale MagicDNS (100.100.100.100). Default true. Pass
+   *  false when Tailscale is not running: that address is unreachable then,
+   *  so every lookup (incl. proxy server hostnames) would time out. */
+  magicDns?: boolean
 }
 
 // ─── WireGuard endpoint (sing-box 1.11+ replaces the old outbound) ──
@@ -262,6 +266,8 @@ export function buildSingboxConfig(nodes: ParsedNode[], opts: SingboxBuildOption
   const autoTags = autoBalancerTags(tags)
   const ruTags = ruHomeTags(tags)
   const civicOutbound = ruTags.length > 0 ? RU_HOME_TAG : 'direct'
+  const useMagicDns = opts.magicDns !== false
+  const dnsFinal = useMagicDns ? 'magicdns' : 'cloudflare'
 
   return {
     log: {
@@ -285,13 +291,14 @@ export function buildSingboxConfig(nodes: ParsedNode[], opts: SingboxBuildOption
     // TUN was intercepting its queries. Using an explicit IPv4 UDP server
     // (100.100.100.100 = Tailscale MagicDNS on this host, which resolves the
     // provider's private *.waynodes.ru domains) avoids both the IPv6 path and
-    // the loopback. Fallback 1.1.1.1 for public domains.
+    // the loopback. Fallback 1.1.1.1 for public domains — and the only
+    // resolver on hosts without Tailscale (opts.magicDns === false).
     dns: {
       servers: opts.dnsServers ?? [
-        { type: 'udp', tag: 'magicdns', server: '100.100.100.100' },
+        ...(useMagicDns ? [{ type: 'udp', tag: 'magicdns', server: '100.100.100.100' }] : []),
         { type: 'udp', tag: 'cloudflare', server: '1.1.1.1' },
       ],
-      final: 'magicdns',
+      final: dnsFinal,
       strategy: 'ipv4_only',
       reverse_mapping: true,
       independent_cache: true,
@@ -384,7 +391,7 @@ export function buildSingboxConfig(nodes: ParsedNode[], opts: SingboxBuildOption
       // 1.12+: outbound dial needs an explicit domain resolver.
       // Explicit IPv4 resolver for outbound dial (proxy server hostnames are
       // private domains resolved only by Tailscale MagicDNS 100.100.100.100).
-      default_domain_resolver: { server: 'magicdns' },
+      default_domain_resolver: { server: dnsFinal },
     },
   }
 }
