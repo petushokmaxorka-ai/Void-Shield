@@ -973,7 +973,10 @@ export class VpnManager {
       const stale = !_egressIp || Date.now() - _egressTs > EGRESS_TTL
       if (stale) {
         try {
-          const ip = usingHereticVpn() ? await probeHereticEgress() : await runner.probeEgress()
+          // Probe through the active core's own inbound (sing-box: mixed :7899).
+          const ip = usingHereticVpn()
+            ? await probeHereticEgress()
+            : await runner.probeEgress(r.kind === 'singbox' ? `socks5h://${XRAY_SOCKS_HOST}:${SINGBOX_MIXED_PORT}` : undefined)
           if (ip) {
             _egressIp = ip
             _egressTs = Date.now()
