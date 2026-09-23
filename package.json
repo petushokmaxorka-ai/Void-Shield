@@ -9,6 +9,13 @@
   },
   "license": "MIT",
   "homepage": "https://github.com/petushokmaxorka-ai/Void-Shield",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/petushokmaxorka-ai/Void-Shield.git"
+  },
+  "bugs": {
+    "url": "https://github.com/petushokmaxorka-ai/Void-Shield/issues"
+  },
   "scripts": {
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
@@ -20,6 +27,7 @@
     "build": "npm run typecheck && electron-vite build",
     "postinstall": "electron-builder install-app-deps",
     "fetch-xray": "bash scripts/fetch-xray.sh --all",
+    "fetch-singbox": "bash scripts/fetch-singbox.sh --all",
     "build:unpack": "npm run build && electron-builder --dir",
     "build:linux": "npm run build && electron-builder --linux",
     "build:win": "npm run build && electron-builder --win",
