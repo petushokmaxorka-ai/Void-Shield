@@ -139,7 +139,7 @@ fetch_one() {
     cp "${tmp}/out/wintun.dll" "${out_dir}/wintun.dll"
   fi
   rm -rf "${tmp}"
-  echo "  ${target}: ok ($(ls -la "${out_dir}/${bin_name}" | awk '{print $5}') bytes)" >&2
+  echo "  ${target}: ok ($(wc -c < "${out_dir}/${bin_name}" | tr -d ' ') bytes)" >&2
 }
 
 echo "Downloading xray-core binaries..." >&2
@@ -157,12 +157,12 @@ echo "Downloading geoip.dat + geosite.dat..." >&2
 for dat in geoip geosite; do
   out="${DEST_DIR}/${dat}.dat"
   if [ -s "${out}" ]; then
-    echo "  ${dat}.dat: already present ($(stat -c%s "${out}") bytes)" >&2
+    echo "  ${dat}.dat: already present ($(wc -c < "${out}" | tr -d ' ') bytes)" >&2
     continue
   fi
   url="https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/${dat}.dat"
-  if curl "${CURL_OPTS[@]}" "${url}" -o "${out}" 2>/dev/null && [ "$(stat -c%s "${out}" 2>/dev/null)" -gt 100000 ]; then
-    echo "  ${dat}.dat: ok ($(stat -c%s "${out}") bytes)" >&2
+  if curl "${CURL_OPTS[@]}" "${url}" -o "${out}" 2>/dev/null && [ "$(wc -c < "${out}" 2>/dev/null | tr -d ' ')" -gt 100000 ]; then
+    echo "  ${dat}.dat: ok ($(wc -c < "${out}" | tr -d ' ') bytes)" >&2
   else
     echo "  ${dat}.dat: FAILED — copy manually from /usr/share/v2ray or ~/.local/bin/" >&2
     rm -f "${out}"

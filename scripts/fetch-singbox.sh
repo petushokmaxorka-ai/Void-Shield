@@ -166,7 +166,7 @@ fetch_one() {
   rm -f "/tmp/singbox-${target}.${ext}"
 
   if [ -f "${out_dir}/${bin_name}" ]; then
-    echo "  ${target}: ok ($(ls -la "${out_dir}/${bin_name}" | awk '{print $5}') bytes)" >&2
+    echo "  ${target}: ok ($(wc -c < "${out_dir}/${bin_name}" | tr -d ' ') bytes)" >&2
   else
     echo "  ${target}: binary not found after extract" >&2
     return 1
