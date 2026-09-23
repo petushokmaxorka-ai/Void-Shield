@@ -23,7 +23,7 @@ No FlClashX required. No systemd. No local VPN install.
 2. Open the latest release
 3. Download:
    - **Linux** → `VoidShield-*.AppImage` → `chmod +x` → run
-   - **Windows** → `VoidShield Setup *.exe` → install → run
+   - **Windows** → `VoidShield-Setup-*.exe` → install → run
 4. Paste your subscription URL → **REGISTER & IGNITE**
 
 If Releases is empty, check [Actions](https://github.com/petushokmaxorka-ai/Void-Shield/actions) — CI may still be building or failed.
@@ -48,7 +48,7 @@ Copyright stays with **petushokmaxorka-ai**; keep the copyright/permission notic
 npm install
 npm run fetch-xray
 npm run build:linux   # → release/*.AppImage
-npm run build:win     # → release/*Setup*.exe
+npm run build:win     # → release/VoidShield-Setup-*.exe
 npm test
 ```
 
@@ -71,7 +71,7 @@ FlClashX не нужен. systemd не нужен. Отдельный VPN в с�
 2. Взять последний релиз
 3. Скачать:
    - **Linux** → `VoidShield-*.AppImage` → `chmod +x` → запустить
-   - **Windows** → `VoidShield Setup *.exe` → установить → запустить
+   - **Windows** → `VoidShield-Setup-*.exe` → установить → запустить
 4. Вставить URL подписки → **REGISTER & IGNITE**
 
 Если Releases пустой — смотри [Actions](https://github.com/petushokmaxorka-ai/Void-Shield/actions): сборка ещё идёт или упала.
@@ -96,7 +96,7 @@ FlClashX не нужен. systemd не нужен. Отдельный VPN в с�
 npm install
 npm run fetch-xray
 npm run build:linux   # → release/*.AppImage
-npm run build:win     # → release/*Setup*.exe
+npm run build:win     # → release/VoidShield-Setup-*.exe
 npm test
 ```
 

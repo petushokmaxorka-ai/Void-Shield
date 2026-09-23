@@ -40,13 +40,17 @@ jobs:
       - name: Package AppImage + tar.gz
         env:
           DEBUG: electron-builder
-        run: npx electron-builder --linux --publish never
+        run: |
+          npx electron-builder --linux --publish never
+          # electron-updater feed — without it installed AppImages never update.
+          test -f release/latest-linux.yml
       - uses: actions/upload-artifact@v4
         with:
           name: void-shield-linux
           path: |
             release/*.AppImage
             release/*.tar.gz
+            release/latest-linux.yml
           if-no-files-found: error
 
   build-windows:
@@ -77,12 +81,17 @@ jobs:
         shell: bash
         env:
           DEBUG: electron-builder
-        run: npx electron-builder --win --publish never
+        run: |
+          npx electron-builder --win --publish never
+          # electron-updater feed — without it installed copies never update.
+          test -f release/latest.yml
       - uses: actions/upload-artifact@v4
         with:
           name: void-shield-windows
           path: |
             release/*.exe
+            release/*.exe.blockmap
+            release/latest.yml
           if-no-files-found: error
 
   publish:
